@@ -140,3 +140,21 @@ def test_soloist_websocket_default_port_is_loopback_only() -> None:
         SoloistPaths(Path("/x")), key="k" * 16, name="n", port=Settings().soloist_ws_port
     )
     assert argv[argv.index("--ws") + 1].startswith("127.0.0.1:")
+
+
+def test_boot_order_has_no_cycle_with_cloud_init() -> None:
+    """Up to image 0.7.0 myboxi-firstboot was ordered after cloud-final (which waits for the
+    network and multi-user.target) and before NetworkManager: systemd broke the cycle by
+    dropping NetworkManager. image/build.sh checks the whole boot; this is the quick check."""
+    units = FILES / "etc" / "systemd" / "system"
+    firstboot = (units / "myboxi-firstboot.service").read_text()
+    assert "cloud-final" not in firstboot.replace("Never after cloud-final", "")
+    assert "Before=NetworkManager.service" in firstboot
+    provision = (units / "myboxi-provision.service").read_text()
+    assert "After=NetworkManager.service myboxi-firstboot.service" in provision
+    # the agent's user session starts afterwards and finds its handover (SPEC v0.14 §9.7)
+    assert "Before=systemd-user-sessions.service" in provision
+    assert "ConditionPathExists=/boot/firmware/myboxi-setup.json" in provision
+    build = (FILES.parent / "build.sh").read_text()
+    assert "myboxi-provision.service" in build
+    assert "ordering cycle" in build

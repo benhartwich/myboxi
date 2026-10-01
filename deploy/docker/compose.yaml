@@ -85,6 +85,8 @@ services:
       - data:/var/lib/myboxi-server
       - assets:/var/lib/myboxi-server/assets
       - run:/run/myboxi-server
+      # only myboxi-ca.pem is used: an own CA goes into the boxes' setup files
+      - ${MYBOXI_CERTS_DIR:-./certs}:/etc/myboxi/certs:ro
     depends_on:
       migrate: { condition: service_completed_successfully }
     healthcheck:

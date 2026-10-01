@@ -67,10 +67,17 @@ async def pairing_start(
             hw_model=body.hw_model,
             agent_version=body.agent_version,
             pairing_key=body.pairing_key,
+            claim_token=body.claim_token,
         )
     except pairing.PairingDeniedError:
         await db.rollback()
         raise ApiError(403, ErrorCode.PAIRING_DENIED, "Pairing denied") from None
+    except pairing.ClaimInvalidError:
+        await db.rollback()
+        raise ApiError(403, ErrorCode.CLAIM_INVALID, "Claim token not valid") from None
+    except pairing.PairedElsewhereError as exc:
+        await db.rollback()
+        raise ApiError(409, ErrorCode.DEVICE_PAIRED_ELSEWHERE, exc.message) from None
     await db.commit()
     return PairingStartResponse(
         code=started.code, expires_in=started.expires_in, poll_token=started.poll_token

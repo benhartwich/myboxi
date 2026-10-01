@@ -17,7 +17,7 @@ from sqlalchemy import select
 
 from myboxi_protocol.events import EventBatchResponse
 from myboxi_protocol.state import StateResponse
-from myboxi_server.domain import members
+from myboxi_server.domain import claim_tokens, members
 from myboxi_server.models import ContentItem, Event, Membership, ResumePosition, Token, Upload
 from myboxi_server.models.enums import Role, UploadProfile, UploadStatus
 
@@ -57,6 +57,7 @@ class Side:
     item_id: uuid.UUID
     asset_id: uuid.UUID
     upload_id: uuid.UUID
+    claim_id: uuid.UUID
 
 
 @dataclass
@@ -75,6 +76,7 @@ class World:
             "item_id": str(self.b.item_id),
             "asset_id": str(self.b.asset_id),
             "upload_id": str(self.b.upload_id),
+            "claim_id": str(self.b.claim_id),
             "sha256": self.b.lib.shas[0],
         }
 
@@ -96,6 +98,7 @@ async def _side(app: FastAPI, client: httpx.AsyncClient, name: str) -> Side:
             status=UploadStatus.FAILED, error="x",
         )  # fmt: skip
         db.add(upload)
+        claim = await claim_tokens.create(db, ctx, name=f"Box {name}")  # SPEC v0.14 §9.7
         await db.commit()
         assert ctx.user_id is not None
     return Side(
@@ -108,6 +111,7 @@ async def _side(app: FastAPI, client: httpx.AsyncClient, name: str) -> Side:
         item.id,
         item.asset_id,
         upload.id,
+        claim.row.id,
     )
 
 
@@ -133,6 +137,7 @@ def test_every_route_is_covered(app: FastAPI) -> None:
         "item_id",
         "upload_id",
         "asset_id",
+        "claim_id",
     }
     for r in tenant_routes(app):
         assert set(r.params) <= known, (

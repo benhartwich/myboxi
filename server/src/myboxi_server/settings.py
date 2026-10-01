@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     mqtt_password: SecretStr | None = None
     mqtt_tls: bool = True  # SPEC §6: no plain-text port; off only for tests
     mqtt_ca_file: Path | None = None
+    # Self-hosting with an own CA (docs/selbst-hosten.md): written into setup files (SPEC
+    # v0.14 §9.7), so boxes trust this server without pasting the CA.
+    box_ca_file: Path | None = None
 
     # "Box gestalten": in-process cache for generated previews and print files.
     case_cache_mb: int = Field(default=64, ge=0)

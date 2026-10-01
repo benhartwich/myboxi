@@ -203,6 +203,18 @@ class StateRepo:
 
     # SPEC v0.9 §8.1: the Soloist key stays on the box, also after unpairing; never logged.
 
+    # SPEC v0.14 §7.1: one-time token from the setup file; used up by the next pairing.
+
+    def claim_token(self) -> str | None:
+        row = self.db.conn.execute("SELECT value FROM secret WHERE name = 'claim_token'").fetchone()
+        return str(row["value"]) if row else None
+
+    def set_claim_token(self, token: str | None) -> None:
+        with self.db.tx() as c:
+            c.execute("DELETE FROM secret WHERE name = 'claim_token'")
+            if token is not None:
+                c.execute("INSERT INTO secret (name, value) VALUES ('claim_token', ?)", (token,))
+
     def soloist_key(self) -> str | None:
         row = self.db.conn.execute(
             "SELECT value FROM secret WHERE name = 'soloist_api_key'"

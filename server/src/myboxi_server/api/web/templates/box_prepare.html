@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% block title %}Einrichtungsdatei · Myboxi{% endblock %}
+{% block head %}{% if step == 'file' %}<script type="module" src="{{ asset('setup-file.js') }}"></script>{% endif %}{% endblock %}
+{% block content %}
+<a class="back" href="/t/{{ tid }}/setup">{{ icon.back() }}Box einrichten</a>
+<h1>Einrichtungsdatei</h1>
+<p>Mit dieser Datei auf der SD-Karte verbindet sich die Box beim Einschalten selbst mit eurem WLAN und eurem Haushalt. Sie braucht dafür weder Lautsprecher noch Tasten, und du musst keinen Code eintippen.</p>
+
+{% if step == 'name' %}
+<form method="post" action="/t/{{ tid }}/boxes/prepare" class="card stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <label>Name der Box <input name="name" maxlength="64" placeholder="Kinderzimmer" value="{{ form.name or '' }}" required></label>
+  <button type="submit">Weiter</button>
+  <p class="muted">Die Datei gilt 7 Tage und für genau eine Box.</p>
+</form>
+{% else %}
+<ol class="guide" id="setup-file" data-setup="{{ setup_json }}">
+  <li class="card">
+    <span class="num">1</span>
+    <h2>WLAN eintragen</h2>
+    <p class="muted">Das WLAN-Passwort bleibt in deinem Browser. Myboxi bekommt es nie zu sehen; es steht nur in der Datei.</p>
+    <div class="stack">
+      <label>WLAN-Name <input id="wifi-ssid" maxlength="32" autocomplete="off" spellcheck="false"></label>
+      <label>WLAN-Passwort <input id="wifi-password" type="password" maxlength="63" autocomplete="off"></label>
+      <label>Land <select id="wifi-country">{% for code, label in countries %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+      <details>
+        <summary>Erweitert: SSH-Zugang</summary>
+        <label>Öffentliche SSH-Schlüssel, einer pro Zeile
+          <textarea id="ssh-keys" rows="3" spellcheck="false" placeholder="ssh-ed25519 AAAA… name@rechner"></textarea></label>
+        <p class="muted">Nur für die Fehlersuche. Die Box legt den Nutzer <code>admin</code> an, Anmeldung nur mit Schlüssel.</p>
+      </details>
+      <p class="msg error" id="setup-error" role="alert" hidden></p>
+      <button type="button" id="download-setup">Datei herunterladen</button>
+      <noscript><p class="msg error">Für den Download braucht diese Seite JavaScript.</p></noscript>
+    </div>
+  </li>
+  <li class="card">
+    <span class="num">2</span>
+    <h2>Auf die SD-Karte kopieren</h2>
+    <ol>
+      <li>Das Image wie gewohnt mit dem Raspberry Pi Imager auf die SD-Karte schreiben.</li>
+      <li>Die Karte erscheint danach am Computer als Laufwerk <strong>bootfs</strong> (sonst kurz aus- und wieder einstecken). Die Datei <code>myboxi-setup.json</code> dorthin kopieren, ohne sie umzubenennen.</li>
+      <li>Die Karte auswerfen, in die Box stecken und einschalten.</li>
+    </ol>
+  </li>
+  <li class="card">
+    <span class="num">3</span>
+    <h2>Einschalten</h2>
+    <p>Die Box verbindet sich, sobald sie gestartet ist, beim ersten Mal nach etwa zwei Minuten. Danach löscht sie die Datei von der Karte.</p>
+    {% include "_prepare_status.html" %}
+  </li>
+</ol>
+{% endif %}
+{% endblock %}

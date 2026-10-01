@@ -1,6 +1,9 @@
 [Unit]
 Description=Myboxi first boot: host name and Wi-Fi country
-After=cloud-final.service systemd-hostnamed.service
+# After cloud-init's first stage (host name and users from Raspberry Pi Imager), before
+# NetworkManager. Never after cloud-final: that waits for the network and multi-user.target,
+# and systemd would break the ordering cycle by dropping NetworkManager (image/build.sh checks).
+After=cloud-init-network.service systemd-hostnamed.service
 Before=NetworkManager.service
 ConditionPathExists=!/var/lib/myboxi/.firstboot-done
 

@@ -150,6 +150,21 @@ def _cmd_setupd(args: argparse.Namespace, settings: Settings) -> int:
     return 0 if asyncio.run(main()) else 1
 
 
+def _cmd_provision(args: argparse.Namespace, settings: Settings) -> int:
+    """SPEC v0.14 §9.7: apply the setup file (root, myboxi-provision.service)."""
+    del args
+    from myboxi_agent.setup.nm import NetworkManager
+    from myboxi_agent.setup.provision import Provisioner
+
+    provisioner = Provisioner(
+        setup_file=settings.setup_file,
+        handover=settings.provision_handover,
+        wifi=NetworkManager(),
+        agent_user=settings.agent_user,
+    )
+    return 0 if provisioner.apply() else 1
+
+
 def _cmd_update(args: argparse.Namespace, settings: Settings) -> int:
     """SPEC v0.7 §11.1: one update run (root, myboxi-updater.service)."""
     del args
@@ -307,6 +322,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--host", default="10.42.0.1")
     p.add_argument("--port", type=int, default=80)
     p.set_defaults(func=_cmd_setupd)
+    sub.add_parser("provision", help="apply the setup file (root, systemd)").set_defaults(
+        func=_cmd_provision
+    )
 
     sub.add_parser("update", help="install a software update (root, systemd)").set_defaults(
         func=_cmd_update

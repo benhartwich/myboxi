@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 from collections.abc import Callable
 from pathlib import Path
 
@@ -17,9 +18,10 @@ from myboxi_agent.app import App as AgentApp
 from myboxi_agent.config import Settings as AgentSettings
 from myboxi_agent.core.model import Action, Playable
 from myboxi_agent.sync import engine as agent_engine
+from myboxi_server.domain import claim_tokens
 from myboxi_server.models import Device, DeviceConfig, Event
 
-from .helpers import claim_code, make_tenant, seed_library, sessionmaker_of
+from .helpers import claim_code, make_tenant, owner_ctx, seed_library, sessionmaker_of
 
 
 async def wait_for(condition: Callable[[], object], seconds: float = 30) -> None:
@@ -112,3 +114,38 @@ def _local(player: object) -> object:
     from myboxi_agent.adapters.routing import RoutingPlayer
 
     return player.local if isinstance(player, RoutingPlayer) else player
+
+
+async def test_agent_pairs_itself_with_a_setup_file(
+    live_server: str, app: FastAPI, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SPEC v0.14 §9.7: no spoken code, nobody types anything; the box finds its household."""
+    monkeypatch.setattr(agent_engine, "POLL_S", 2.1)  # server allows one poll per 2 s window
+    t = await make_tenant(app)
+    ctx = await owner_ctx(app, t.tenant_id)
+    async with sessionmaker_of(app)() as db:
+        new = await claim_tokens.create(db, ctx, name="Wohnzimmer")
+        await db.commit()
+    settings = AgentSettings(data_dir=tmp_path / "box", sim=True,
+                             default_server_url="https://app.myboxi.eu")  # fmt: skip
+    # what "myboxi-agent provision" hands over from myboxi-setup.json at boot
+    settings.provision_handover.parent.mkdir(parents=True)
+    settings.provision_handover.write_text(
+        json.dumps({"server_url": live_server, "claim_token": new.token})
+    )
+    agent = AgentApp(settings, sim_adapters())
+    announcer = agent.announcer
+    assert isinstance(announcer, SimAnnouncer)
+    task = asyncio.create_task(agent.run())
+    try:
+        await wait_for(lambda: agent.state.get().tenant_id == t.tenant_id)
+        said = [p for line in announcer.history for p in line]
+        assert "pairing_intro" not in said
+        async with sessionmaker_of(app)() as db:
+            device = await db.get(Device, agent.state.get().device_id)
+            assert device is not None
+            assert (device.name, device.tenant_id) == ("Wohnzimmer", t.tenant_id)
+    finally:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task

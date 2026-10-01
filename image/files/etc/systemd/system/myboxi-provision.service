@@ -1,0 +1,18 @@
+# SPEC v0.14 §9.7: applies myboxi-setup.json from the boot partition (Wi-Fi, SSH, server,
+# claim token), then deletes it. After NetworkManager (Wi-Fi via nmcli), before user sessions:
+# the agent (user session of "myboxi") starts only afterwards and finds its handover.
+[Unit]
+Description=Myboxi setup file
+After=NetworkManager.service myboxi-firstboot.service
+Wants=NetworkManager.service
+Before=systemd-user-sessions.service
+ConditionPathExists=/boot/firmware/myboxi-setup.json
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/myboxi-agent/myboxi-agent.env
+ExecStart=/opt/myboxi-agent/current/.venv/bin/myboxi-agent provision
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

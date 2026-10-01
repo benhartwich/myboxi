@@ -74,8 +74,11 @@ class FakeApi:
     downloads: int = 0
     reject_ids: set[str] = field(default_factory=set[str])
     start_bodies: list[PairingStartRequest] = field(default_factory=list[PairingStartRequest])
+    start_errors: list[ApiError] = field(default_factory=list[ApiError])
 
     async def pairing_start(self, body: PairingStartRequest) -> PairingStartResponse:
+        if self.start_errors:
+            raise self.start_errors.pop(0)
         self.start_bodies.append(body)
         self.starts += 1
         return PairingStartResponse(code=f"{self.starts:06d}", expires_in=600, poll_token="p" * 40)

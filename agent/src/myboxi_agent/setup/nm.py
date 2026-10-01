@@ -118,9 +118,10 @@ class NetworkManager:
         self.run(["connection", "down", HOTSPOT], 15)
         self.run(["connection", "delete", HOTSPOT], 15)
 
-    def connect_wifi(self, ssid: str, password: str) -> bool:
-        """Create (or replace) the connection for ``ssid`` and bring it up."""
-        name = f"myboxi-wifi-{ssid}"[:64]
+    def add_wifi(self, ssid: str, password: str | None) -> bool:
+        """Create (or replace) the connection for ``ssid``; NetworkManager connects on its own
+        (autoconnect). Used by the setup file at boot (SPEC v0.14 §9.7)."""
+        name = wifi_connection_name(ssid)
         self.run(["connection", "delete", name], 15)
         args = [
             "connection", "add", "type", "wifi", "ifname", self.iface, "con-name", name,
@@ -131,12 +132,23 @@ class NetworkManager:
         if self.run(args, 15).code != 0:
             log.error("could not add Wi-Fi connection", extra={"ssid": ssid})
             return False
+        return True
+
+    def connect_wifi(self, ssid: str, password: str) -> bool:
+        """Create (or replace) the connection for ``ssid`` and bring it up."""
+        name = wifi_connection_name(ssid)
+        if not self.add_wifi(ssid, password):
+            return False
         up = self.run(["--wait", "45", "connection", "up", name], 60)
         if up.code != 0:
             self.run(["connection", "delete", name], 15)
             log.warning("Wi-Fi connection failed", extra={"ssid": ssid})
             return False
         return True
+
+
+def wifi_connection_name(ssid: str) -> str:
+    return f"myboxi-wifi-{ssid}"[:64]
 
 
 def network_name(serial: str | None) -> str:
