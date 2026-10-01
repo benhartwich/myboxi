@@ -571,3 +571,40 @@ def test_pairing_key_and_ack_codes_v0_12() -> None:
     assert ack.message == "quiet_hours"
     with pytest.raises(ValidationError):
         CmdAckData.model_validate({"cmd_id": ULID, "result": "error", "message": "x" * 100})
+
+
+def test_setup_file_9_7() -> None:
+    """SPEC v0.14 §9.7: the example from the spec; secrets never in repr."""
+    from myboxi_protocol.setup_file import SetupFile
+
+    token = "q3V0bWJ0ZXN0LXRva2VuLTAxMjM0NTY3ODlhYmNkZWZ"
+    key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGb5bN0p1r1o0yQq4yE0bQ2bS0x8x6H4m8v1u2w3x4y5 ich@pc"
+    example: dict[str, Any] = {
+        "myboxi_setup": 1,
+        "server_url": "https://app.myboxi.eu",
+        "claim_token": token,
+        "wifi": {"ssid": "Heimnetz", "password": "geheimes-wlan"},
+        "wifi_country": "AT",
+        "ssh_authorized_keys": [key],
+    }
+    setup = SetupFile.model_validate(example)
+    assert setup.model_dump(mode="json", exclude_defaults=True) == example
+    assert "geheimes-wlan" not in repr(setup)
+    assert token not in repr(setup)
+    open_wifi = SetupFile.model_validate(
+        {"myboxi_setup": 1, "server_url": "https://x.example",
+         "wifi": {"ssid": "Offen", "password": ""}}
+    )  # fmt: skip
+    assert open_wifi.wifi is not None
+    assert open_wifi.wifi.password is None
+    for bad in (
+        {"server_url": "http://app.myboxi.eu"},  # never plain HTTP (SPEC v0.12 §9.3)
+        {"wifi": {"ssid": "Heim", "password": "kurz"}},
+        {"wifi": {"ssid": "x" * 33}},
+        {"wifi_country": "austria"},
+        {"claim_token": "zu-kurz"},
+        {"ssh_authorized_keys": ["-----BEGIN OPENSSH PRIVATE KEY-----"]},
+        {"myboxi_setup": 2},
+    ):
+        with pytest.raises(ValidationError):
+            SetupFile.model_validate({"myboxi_setup": 1, "server_url": "https://a.example"} | bad)

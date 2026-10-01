@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import uuid
 from typing import Annotated, Any
 
@@ -30,12 +31,13 @@ from myboxi_server.api.web.render import render
 from myboxi_server.api.web.routes_setup import render_start
 from myboxi_server.auth import ratelimit
 from myboxi_server.auth.sessions import SessionInfo
-from myboxi_server.domain import commands, devices, events, tokens
+from myboxi_server.domain import claim_tokens, commands, devices, events, tokens
 from myboxi_server.domain.authz import TenantContext
 from myboxi_server.domain.errors import DomainError, NotFoundError
 from myboxi_server.domain.setup import health_hints
 from myboxi_server.domain.updates import Release, software_view
 from myboxi_server.models import Device, Tenant
+from myboxi_server.settings import Settings
 
 router = APIRouter(prefix="/t/{tid}/boxes", dependencies=[Depends(csrf_protect)])
 
@@ -175,6 +177,89 @@ async def add_box(
             error=_CLAIM_MESSAGES.get(exc.code, exc.message),
         )  # fmt: skip
     return RedirectResponse(f"/t/{ctx.tenant_id}/boxes/{claimed.device_id}/setup", status_code=303)
+
+
+# --- setup file (SPEC v0.14 §9.7) ----------------------------------------------------------
+
+COUNTRIES = [
+    ("AT", "Österreich"), ("DE", "Deutschland"), ("CH", "Schweiz"), ("LI", "Liechtenstein"),
+    ("LU", "Luxemburg"), ("IT", "Italien"), ("NL", "Niederlande"), ("BE", "Belgien"),
+    ("FR", "Frankreich"), ("DK", "Dänemark"), ("PL", "Polen"), ("CZ", "Tschechien"),
+    ("GB", "Vereinigtes Königreich"), ("US", "USA"),
+]  # fmt: skip
+
+
+def _box_ca(settings: Settings) -> str | None:
+    """A self-hosted server's own CA (docs/selbst-hosten.md), for the setup file."""
+    if settings.box_ca_file is None:
+        return None
+    try:
+        pem = settings.box_ca_file.read_text(encoding="ascii").strip()
+    except (OSError, UnicodeDecodeError):
+        return None
+    return pem + "\n" if pem.startswith("-----BEGIN CERTIFICATE-----") and len(pem) < 8192 else None
+
+
+@router.get("/prepare")
+async def prepare_form(request: Request, session: CurrentSession, ctx: ClaimCtx) -> Response:
+    return render(request, "box_prepare.html", {"step": "name", "form": {}},
+                  session=session, ctx=ctx)  # fmt: skip
+
+
+@router.post("/prepare")
+async def prepare_file(
+    request: Request,
+    db: DbSession,
+    session: CurrentSession,
+    ctx: ClaimCtx,
+    settings: SettingsDep,
+    name: Annotated[str, Form(max_length=64)],
+) -> Response:
+    """The token is shown once: the browser writes it into the file together with the Wi-Fi
+    settings, which never reach the server."""
+    try:
+        new = await claim_tokens.create(db, ctx, name=name)
+    except DomainError as exc:
+        await db.rollback()
+        return render(request, "box_prepare.html",
+                      {"step": "name", "form": {"name": name}, "error": exc.message},
+                      session=session, ctx=ctx, status_code=400)  # fmt: skip
+    await db.commit()
+    setup: dict[str, Any] = {
+        "myboxi_setup": 1,
+        "server_url": settings.base_url.rstrip("/"),
+        "claim_token": new.token,
+    }
+    if ca := _box_ca(settings):
+        setup["server_ca"] = ca
+    response = render(
+        request,
+        "box_prepare.html",
+        {"step": "file", "setup_json": json.dumps(setup), "token": new.row,
+         "countries": COUNTRIES, "state": "waiting"},
+        session=session,
+        ctx=ctx,
+    )  # fmt: skip
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@router.get("/prepare/{claim_id}")
+async def prepare_status(
+    request: Request, db: DbSession, session: CurrentSession, ctx: ClaimCtx, claim_id: uuid.UUID
+) -> Response:
+    """Polled while the box is on its way (HTMX)."""
+    try:
+        row = await claim_tokens.get(db, ctx, claim_id)
+    except NotFoundError:
+        return Response(status_code=404)
+    return render(
+        request,
+        "_prepare_status.html",
+        {"token": row, "state": claim_tokens.state(row, dt.datetime.now(dt.UTC))},
+        session=session,
+        ctx=ctx,
+    )
 
 
 def _reported_view(

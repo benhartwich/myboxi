@@ -29,9 +29,11 @@ prepare_data() {
 }
 
 own_ca() {
-    # With an own CA the MQTT service must trust it for the broker's certificate.
+    # With an own CA the MQTT service must trust it for the broker's certificate, and the
+    # web app puts it into setup files for the boxes (SPEC v0.14 §9.7).
     if [ -f "$CERTS/myboxi-ca.pem" ]; then
         export MYBOXI_SERVER_MQTT_CA_FILE="$CERTS/myboxi-ca.pem"
+        export MYBOXI_SERVER_BOX_CA_FILE="$CERTS/myboxi-ca.pem"
     fi
 }
 
@@ -109,6 +111,7 @@ cmd=${1:-api}
 case "$cmd" in
     api)
         prepare_data
+        own_ca
         install -d -o myboxi-server -g myboxi-server -m 0755 "$RUN_DIR"
         rm -f "$RUN_DIR/api.sock"
         # uvicorn only on the Unix socket that nginx shares (CLAUDE.md), never on a port.

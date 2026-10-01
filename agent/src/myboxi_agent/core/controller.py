@@ -278,9 +278,14 @@ class Controller:
 
     # --- pairing (SPEC §9.5) ----------------------------------------------------------------
 
-    def pairing_started(self, code: str) -> None:
+    def pairing_started(self, code: str, *, announce: bool = True) -> None:
+        """``announce=False``: the setup file's token claims the box at once (SPEC v0.14
+        §9.7), nobody needs the code."""
         self.pairing_code = code
-        self._announce_code()
+        if announce:
+            self._announce_code()
+        else:
+            self._last_code_announce = self.clock.monotonic()  # no repeat right away either
 
     def pairing_finished(self, *, success: bool) -> None:
         self.pairing_code = None

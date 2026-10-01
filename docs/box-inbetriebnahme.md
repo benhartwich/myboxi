@@ -6,18 +6,31 @@ Vom Image bis zur ersten Figur. Hardware und Verdrahtung: `docs/hardware.md`.
 
 ## 1. Image flashen
 
-1. Das neueste Image herunterladen: GitHub → Releases → `myboxi-<version>.img.xz`. Zwischenstände aus Branches liegen unter Actions → „image“ → Artefakt `myboxi-image`: eine ZIP-Datei, die du zuerst entpackst.
+1. Das neueste Image herunterladen: GitHub → Releases → `myboxi-<version>.img.xz`. Images bis 0.7.0 starten NetworkManager nicht zuverlässig, bitte mindestens 0.8.0 verwenden. Zwischenstände aus Branches liegen unter Actions → „image“ → Artefakt `myboxi-image`: eine ZIP-Datei, die du zuerst entpackst.
 2. Raspberry Pi Imager (Version 2) → Gerät „Raspberry Pi 4“ → Betriebssystem „Eigenes Image verwenden“ → die `.img.xz` wählen → SD-Karte → Schreiben.
 3. Die Einstellungen des Imagers sind optional:
-   - **WLAN** kannst du hier schon eintragen, dann entfällt Schritt 3.
+   - **WLAN** kannst du hier schon eintragen. Einfacher geht es mit der Einrichtungsdatei (Abschnitt 2).
    - Einen **SSH-Schlüssel** brauchst du nur zur Fehlersuche.
    - **Hostname** und **WLAN-Land** setzt die Box sonst selbst: `myboxi-NNNN`, Land AT.
 
-## 2. Einschalten
+## 2. Einrichtungsdatei (am einfachsten)
+
+Mit der Einrichtungsdatei verbindet sich die Box beim ersten Einschalten selbst mit eurem WLAN und eurem Haushalt. Du brauchst keinen Code, und Lautsprecher und Tasten dürfen noch fehlen. Voraussetzung ist Image 0.8.0 oder neuer.
+
+1. In der Web-UI unter **Boxen → Box hinzufügen → Einrichtungsdatei erstellen** einen Namen für die Box eingeben.
+2. WLAN-Name, WLAN-Passwort und Land eintragen und „Datei herunterladen“. Das WLAN-Passwort bleibt in deinem Browser und erreicht den Server nie. Unter „Erweitert“ kannst du einen öffentlichen SSH-Schlüssel mitgeben. Die Box legt dann den Nutzer `admin` an, mit Anmeldung nur per Schlüssel.
+3. Nach dem Flashen erscheint die SD-Karte am Computer als Laufwerk **bootfs** (sonst kurz aus- und wieder einstecken). `myboxi-setup.json` dorthin kopieren, ohne die Datei umzubenennen.
+4. Karte in die Box, einschalten. Die Seite in der Web-UI zeigt von selbst, wenn die Box verbunden ist, beim ersten Start nach etwa zwei Minuten. Die Box löscht die Datei danach von der Karte.
+
+Die Datei gilt 7 Tage und für genau eine Box. Kann die Box sie nicht verwenden, etwa wegen eines falschen WLAN-Namens oder Formats, benennt sie sie in `myboxi-setup.failed.json` um. Dann öffnet sie wie unten das Einrichtungs-WLAN. Ist die Datei abgelaufen oder schon benutzt, koppelt die Box wie gewohnt mit angesagtem Code.
+
+Die Abschnitte 4 und 5 brauchst du mit Einrichtungsdatei nicht.
+
+## 3. Einschalten
 
 SD-Karte einlegen und Netzteil anstecken. Der erste Start dauert etwa zwei Minuten, weil die Karte vergrößert wird.
 
-## 3. WLAN einrichten (Einrichtungsmodus)
+## 4. WLAN einrichten (Einrichtungsmodus, ohne Einrichtungsdatei)
 
 Ohne WLAN sagt die Box: „Einrichtung. Verbinde dein Handy mit dem WLAN Myboxi, Nummer …“.
 
@@ -27,7 +40,7 @@ Ohne WLAN sagt die Box: „Einrichtung. Verbinde dein Handy mit dem WLAN Myboxi,
 
 Später lässt sich der Einrichtungsmodus jederzeit starten: **`volume_up` + `volume_down` 5 Sekunden halten.** Nach 15 Minuten ohne Eingabe endet er von selbst.
 
-## 4. Box koppeln
+## 5. Box koppeln (ohne Einrichtungsdatei)
 
 Sobald die Box online ist, sagt sie ihren Kopplungscode an: „Dein Code ist: vier – sieben – …“. Wiederholen: **`play_pause`** drücken. Der Code gilt 10 Minuten, danach kommt ein neuer.
 
@@ -37,13 +50,13 @@ In der ersten Stunde nach dem Koppeln (Einrichtungsphase, SPEC §9.6) piept die 
 
 Neu koppeln (z. B. für einen anderen Haushalt): **`play_pause` + `next` 5 Sekunden halten.**
 
-## 5. Figuren
+## 6. Figuren
 
 1. Eine noch unbekannte Figur auflegen. Die Box sagt „Diese Figur kenne ich noch nicht“.
 2. In der Web-UI unter **Figuren → Unbekannte Figuren** mit „Übernehmen“ anlegen, einen Inhalt zuordnen.
 3. Nach einer unbekannten Figur fragt die Box 10 Minuten lang alle 30 Sekunden beim Server nach, sonst alle 15 Minuten. Sie lädt die Dateien vollständig. Danach spielt die Figur auch ohne Internet. Die Figur einfach noch einmal auflegen.
 
-## 6. Podcasts
+## 7. Podcasts
 
 1. In der Web-UI unter **Inhalte → Podcast** die Feed-Adresse eintragen (RSS oder Atom, `https://…`) und festlegen, wie viele der neuesten Folgen auf die Box sollen.
 2. Den Podcast einer Figur zuordnen. Die Box liest den Feed selbst, gleich nach dem nächsten Abgleich, und lädt die Folgen vollständig herunter. Bis die erste Folge da ist, sagt sie „Wird noch geladen“.
@@ -56,19 +69,19 @@ Gut zu wissen:
 - Feed und Folgen kommen direkt vom Anbieter des Podcasts, nicht über den Myboxi-Server. Der Anbieter sieht dabei die IP-Adresse eures Anschlusses.
 - Lässt sich ein Feed nicht lesen, steht das auf der Box-Seite unter „Probleme bei der Wiedergabe“.
 
-## 7. Radio
+## 8. Radio
 
 Unter **Inhalte → Radio** die Stream-Adresse eines Senders eintragen (`https://…`, auch `.m3u` oder `.pls`) und einer Figur zuordnen. Radio spielt nur mit Internet und immer live; die Weiter-Taste hat hier keinen nächsten Titel. Radio ist auf jeder Box eingeschaltet und lässt sich auf der Box-Seite unter **Quellen** abschalten.
 
-## 8. Von vorn oder ab einem bestimmten Titel
+## 9. Von vorn oder ab einem bestimmten Titel
 
 Auf der Seite einer Figur zeigt **Weiterhören**, wo sie zuletzt war. Mit „Von vorn beginnen“ oder „Ab diesem Titel“ legt ihr fest, wo sie beim nächsten Auflegen startet. Das gilt einmal; danach spielt sie wieder dort weiter, wo das Kind aufgehört hat. Die Box übernimmt es beim nächsten Abgleich, spätestens nach 15 Minuten.
 
-## 9. Fernbedienung
+## 10. Fernbedienung
 
 Ist der Server mit MQTT eingerichtet (bei app.myboxi.eu der Fall), zeigt die Box-Seite eine **Fernbedienung**: Stopp, Lautstärke, eine Figur abspielen, „Welche Box ist das?“ (die Box meldet sich hörbar), jetzt abgleichen und nach Updates sehen. Änderungen in der App kommen dann sofort auf die Box statt spätestens nach 15 Minuten. Befehle verfallen nach einer Minute; Höchstlautstärke und Ruhezeiten gelten auch hier. Die Verbindung ist verschlüsselt, jede Box hat eigene Zugangsdaten und sieht nur ihre eigenen Nachrichten. Boxen, die schon vorher gekoppelt waren, bekommen die Fernbedienung nach einmaligem Neu-Koppeln (`play_pause` + `next` 5 Sekunden halten).
 
-## 10. Spotify
+## 11. Spotify
 
 Voraussetzungen:
 - Spotify Premium.
@@ -112,12 +125,18 @@ Ab Image 0.3.0 aktualisiert sich die Box selbst, sobald sie online ist, aber nie
 
 ## Fehlersuche
 
-Mit SSH (Schlüssel über den Imager gesetzt):
+Box meldet sich nach der Einrichtungsdatei nicht? Die SD-Karte am Computer ansehen:
+- `myboxi-setup.json` liegt noch da: Die Box hat noch nicht fertig gestartet, oder das Image ist älter als 0.8.0.
+- `myboxi-setup.failed.json` liegt da: Die Datei war unbrauchbar. Meist ist der WLAN-Name falsch geschrieben. Dann eine neue Datei erstellen und diese löschen.
+- Keine der beiden: Die Box hat die Datei übernommen. Stimmt das WLAN-Passwort nicht, öffnet sie nach 2 Minuten das Einrichtungs-WLAN `Myboxi-NNNN`.
+
+Mit SSH (Schlüssel über die Einrichtungsdatei als Nutzer `admin`, oder über den Imager):
 
 ```text
 sudo -u myboxi XDG_RUNTIME_DIR=/run/user/$(id -u myboxi) /opt/myboxi-agent/current/.venv/bin/myboxi-agent doctor
 sudo journalctl _SYSTEMD_USER_UNIT=myboxi-agent.service -f      # Agent
 sudo journalctl -u myboxi-setupd -f                             # Einrichtungsmodus
+sudo journalctl -u myboxi-provision                             # Einrichtungsdatei
 sudo journalctl _SYSTEMD_USER_UNIT=myboxi-soloist.service -f    # Spotify
 ```
 

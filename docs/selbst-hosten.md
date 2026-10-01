@@ -130,7 +130,9 @@ Der Broker lauscht nur verschlüsselt auf Port 8883. Jede Box bekommt beim Koppe
 
 ## 4. Die Box mit deinem Server verbinden
 
-Beim Einrichten der Box ([box-inbetriebnahme.md](box-inbetriebnahme.md)):
+Am einfachsten mit der **Einrichtungsdatei**: In deiner Web-UI unter **Boxen → Box hinzufügen → Einrichtungsdatei erstellen**. Sie enthält deine Server-Adresse und, bei eigener CA, auch `myboxi-ca.pem`. Die Box verbindet sich damit selbst, ohne Code ([box-inbetriebnahme.md](box-inbetriebnahme.md), Abschnitt 2).
+
+Ohne Einrichtungsdatei, beim Einrichten der Box über das Handy:
 
 1. Im Setup-Portal unter **Server** deine Adresse eintragen, z. B. `https://myboxi.home.arpa`.
 2. Nur mit eigener CA (1c): **Eigenes Zertifikat (optional)** aufklappen und den ganzen Inhalt von `certs/myboxi-ca.pem` einfügen, von `-----BEGIN CERTIFICATE-----` bis `-----END CERTIFICATE-----`.

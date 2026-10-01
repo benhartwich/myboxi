@@ -1,0 +1,12 @@
+{# SPEC v0.14 §9.7: where the prepared box stands; polled while it is on its way. #}
+<div id="prepare-status" class="stack"{% if state == 'waiting' %} hx-get="/t/{{ tid }}/boxes/prepare/{{ token.id }}" hx-trigger="every 3s" hx-swap="outerHTML"{% endif %}>
+  {% if state == 'used' %}
+  <p class="hint-ok"><strong>{{ token.device_name }}</strong> ist verbunden.</p>
+  {% if token.device_id %}<p class="actions"><a class="button" href="/t/{{ tid }}/boxes/{{ token.device_id }}/setup">Einrichtung fortsetzen</a></p>{% endif %}
+  {% elif state == 'expired' %}
+  <p class="hint-fail">Die Datei ist abgelaufen. Bitte eine neue erstellen.</p>
+  <p class="actions"><a class="button secondary small" href="/t/{{ tid }}/boxes/prepare">Neue Einrichtungsdatei</a></p>
+  {% else %}
+  <p class="muted" role="status">Wartet auf die Box … Diese Seite merkt von selbst, wenn sie sich meldet. Die Datei gilt bis {{ token.expires_at | localtime }}.</p>
+  {% endif %}
+</div>

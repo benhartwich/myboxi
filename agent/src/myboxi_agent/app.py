@@ -40,6 +40,7 @@ from myboxi_agent.core.setup_phase import SetupPhase
 from myboxi_agent.providers.netguard import feed_client
 from myboxi_agent.providers.podcast import PodcastRefresher
 from myboxi_agent.setup.nm import NetworkManager, network_name, read_serial
+from myboxi_agent.setup.provision import read_handover
 from myboxi_agent.setup.watch import NetworkWatch
 from myboxi_agent.soloist.install import SoloistPaths
 from myboxi_agent.soloist.runner import device_name
@@ -181,6 +182,7 @@ class App:
             "agent starting",
             extra={"device_id": str(self.state.get().device_id), "sim": self.settings.sim},
         )
+        self.apply_handover()
         self.announcer.announce(Prompt.HELLO)  # SPEC §1.7: the box says it is ready
         try:
             async with asyncio.TaskGroup() as tg:
@@ -422,6 +424,27 @@ class App:
                 return {"ok": False, "error": f"unknown command {cmd!r}"}
         await asyncio.sleep(0.2)  # let the loops react before reporting
         return self.status()
+
+    def apply_handover(self) -> None:
+        """SPEC v0.14 §9.7: server, own CA and claim token from the setup file, handed over by
+        ``myboxi-agent provision`` (root) at boot."""
+        handover = read_handover(self.settings.provision_handover)
+        if handover is None:
+            return
+        if not server_url_ok(handover.server_url, allow_http=self._allow_http()):
+            log.error("setup file: the server url must start with https://")
+            return
+        if handover.server_url != self.sync.server_url():
+            self.state.set_server_url(handover.server_url)  # another server: pair again
+        if handover.server_ca and valid_ca(handover.server_ca):
+            self.state.set_server_ca(normalize_ca(handover.server_ca))
+        if handover.claim_token:
+            self.state.set_claim_token(handover.claim_token)
+            if self.state.get().tenant_id is not None:
+                # still paired on this server: unpair there first, then the token pairs it
+                # with the household of the file
+                self.sync.request_repair()
+        log.info("setup file handed over", extra={"claim": handover.claim_token is not None})
 
     def _device_api(self, url: str) -> DeviceApi:
         """SPEC v0.13 §9.3: a self-hosted server's own CA applies to this client only."""

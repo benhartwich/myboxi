@@ -16,6 +16,9 @@ DeviceName = Annotated[str, StringConstraints(min_length=1, max_length=64, strip
 # SPEC v0.12 §7.1: 256 random bits the box creates once; proves on every pairing start that
 # the caller is the box that first used this device id (base64url, no padding).
 PairingKey = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{43}$")]
+# SPEC v0.14 §7.1: one-time token from the household's setup file (§9.7); the box pairs itself
+# with that household, without a spoken code (256 random bits, base64url, no padding).
+ClaimToken = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_-]{43}$")]
 
 
 class PairingStartRequest(ProtocolModel):
@@ -24,6 +27,7 @@ class PairingStartRequest(ProtocolModel):
     agent_version: Annotated[str, StringConstraints(min_length=1, max_length=32)]
     # Omitted (not null) by boxes before v0.12.
     pairing_key: PairingKey | None = Field(default=None, repr=False, exclude_if=lambda v: v is None)
+    claim_token: ClaimToken | None = Field(default=None, repr=False, exclude_if=lambda v: v is None)
 
 
 class PairingStartResponse(ProtocolModel):

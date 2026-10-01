@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     # against production by accident.
     default_server_url: str | None = None
     sim: bool = False
+    # SPEC v0.14 §9.7: read and deleted at boot by myboxi-provision.service (root).
+    setup_file: Path = Path("/boot/firmware/myboxi-setup.json")
     # SPEC v0.12 §9.3: the device secret and tokens travel only over HTTPS. Development only
     # (implied by --sim): allow an http:// server.
     allow_http_server: bool = False
@@ -80,6 +82,11 @@ class Settings(BaseSettings):
     def soloist_dir(self) -> Path:
         """Soloist releases, its data (login) and cache; never in the image (CLAUDE.md)."""
         return self.data_dir / "soloist"
+
+    @property
+    def provision_handover(self) -> Path:
+        """Written by ``myboxi-agent provision`` (root), read once by the agent."""
+        return self.data_dir / "provision.json"
 
     @property
     def control_socket(self) -> Path:

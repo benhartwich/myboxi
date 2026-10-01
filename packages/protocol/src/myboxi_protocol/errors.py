@@ -18,6 +18,7 @@ class ErrorCode(StrEnum):
     CODE_INVALID = "code_invalid"
     DEVICE_PAIRED_ELSEWHERE = "device_paired_elsewhere"
     PAIRING_DENIED = "pairing_denied"  # SPEC v0.12 §7.1: wrong or missing pairing key
+    CLAIM_INVALID = "claim_invalid"  # SPEC v0.14 §7.1: unknown, used or expired claim token
 
 
 class ErrorBody(ProtocolModel):

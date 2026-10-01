@@ -244,15 +244,26 @@ class SyncEngine:
 
     async def _pair(self, api: Api) -> None:
         st = self.state.get()
-        start = await api.pairing_start(
-            PairingStartRequest(
-                device_id=st.device_id,
-                hw_model=self.hw_model,
-                agent_version=__version__,
-                pairing_key=self.state.pairing_key(),  # SPEC v0.12 §7.1
+        claim_token = self.state.claim_token()  # SPEC v0.14 §9.7: from the setup file
+        try:
+            start = await api.pairing_start(
+                PairingStartRequest(
+                    device_id=st.device_id,
+                    hw_model=self.hw_model,
+                    agent_version=__version__,
+                    pairing_key=self.state.pairing_key(),  # SPEC v0.12 §7.1
+                    claim_token=claim_token,
+                )
             )
-        )
-        self.controller.pairing_started(start.code)
+        except ApiError as exc:
+            if claim_token is not None and exc.code == ErrorCode.CLAIM_INVALID:
+                # used, expired or revoked: pair the usual way, with a spoken code
+                log.warning("setup file token not accepted: pairing with a code")
+                self.state.set_claim_token(None)
+                raise PairingExpired from exc
+            raise
+        # With a token the code is already claimed: nobody needs to hear it.
+        self.controller.pairing_started(start.code, announce=claim_token is None)
         deadline = self.clock.monotonic() + start.expires_in
         while self.clock.monotonic() < deadline:
             await asyncio.sleep(POLL_S)
@@ -271,6 +282,7 @@ class SyncEngine:
             if isinstance(result, PairingClaimed):
                 # SPEC §7.1: the broker account is optional, only with a broker
                 self.state.set_paired(result.tenant_id, result.device_secret, result.mqtt)
+                self.state.set_claim_token(None)
                 api.forget_token()
                 if self.setup_phase is not None:
                     self.setup_phase.started()

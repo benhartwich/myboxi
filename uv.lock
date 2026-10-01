@@ -545,6 +545,7 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/5c/91/f5ccf45874cd667005107b654390e6379a2d970ed5fe6e5989bf24f4c7d6/manifold3d-3.5.4-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:8b46d2f19017fc2f3095d71cc111b8574e92afd5515d70529720324da5b1c0ed", size = 1317898, upload-time = "2026-09-25T10:45:38.768Z" },
     { url = "https://files.pythonhosted.org/packages/ac/9e/993cc841e4d88e2c8e6b1c5dfc52d4d0e8f78a46fbeaa98ff9bd539e3248/manifold3d-3.5.4-cp313-cp313-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7a5469641713f1bc291fea873cb134c435704df36828d134190fc2475b304259", size = 1427121, upload-time = "2026-09-25T10:45:40.199Z" },
     { url = "https://files.pythonhosted.org/packages/ea/7a/316e60dea127721fcd523210c2e6c641ab2fa5f6c957eb8a83222f0d7ee4/manifold3d-3.5.4-cp313-cp313-win_amd64.whl", hash = "sha256:76975aa4ebd18dcb0481e43dac3ed70d78066e9ad047e73a5f7dbc0df1553cf4", size = 1036021, upload-time = "2026-09-25T10:45:41.554Z" },
+    { url = "https://files.pythonhosted.org/packages/d1/e7/a96928beac5287485cc0f61ac34c3b2ee42f57221d279a7d3bb176739a4d/manifold3d-3.5.4-cp313-cp313-win_arm64.whl", hash = "sha256:552ffb1f79ef77f1c7e05d638ee43e7fe88c652b1f9b042a88aab1fef85fc28c", size = 1144955, upload-time = "2026-09-29T05:41:57.75Z" },
 ]
 
 [[package]]
@@ -579,7 +580,7 @@ wheels = [
 
 [[package]]
 name = "myboxi-agent"
-version = "0.7.0"
+version = "0.8.0"
 source = { editable = "agent" }
 dependencies = [
     { name = "aiomqtt" },

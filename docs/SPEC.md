@@ -1,6 +1,6 @@
-# Myboxi — Spezifikation v0.13: Datenmodell & Geräteprotokoll
+# Myboxi — Spezifikation v0.14: Datenmodell & Geräteprotokoll
 
-Status: Entwurf · Stand: 2026-09-26 · Änderungen: §14
+Status: Entwurf · Stand: 2026-10-01 · Änderungen: §14
 Scope: Der Vertrag zwischen **Box-Agent** (Raspberry Pi) und **Server**.
 Nicht im Scope: Web-UI, Gehäuse, Image-Build, Rechtliches (eigene Dokumente).
 
@@ -186,7 +186,7 @@ Tabellen spiegeln den für die Box relevanten Ausschnitt: `token`, `content`, `c
 | `sync_state` | applied_config_rev, applied_device_rev, server_url, `server_ca` (eigene CA eines selbst betriebenen Servers, §9.3), MQTT-Host, -Port und -Benutzer (§6) |
 | `staged_change` | Empfangene, noch nicht aktivierte Änderungen (wartet auf Assets) |
 | `outbox` | Ausstehende Events, bis vom Server bestätigt |
-| `secret` | `device_secret`, `mqtt_password`, `pairing_key` (§7.1); `soloist_api_key` (**nie** synchronisiert, nie geloggt) |
+| `secret` | `device_secret`, `mqtt_password`, `pairing_key` (§7.1), bis zur Kopplung `claim_token` (§9.7); `soloist_api_key` (**nie** synchronisiert, nie geloggt) |
 | `podcast_feed` | Je Podcast-Inhalt: Feed-URL, ETag, Last-Modified, letzte Abfrage, Fehlercode (§8.2) |
 | `podcast_episode` | Abspielbare Folgen eines Podcasts (§8.2): `episode_key`, Titel, Enclosure-URL, Datum, Rang (0 = neueste), `selected` (gehört zu den neuesten `keep_latest`), sha256, `gain_db` |
 
@@ -445,7 +445,7 @@ Basis: `{server_url}/api/v1`. Alle Antworten JSON, außer Assets.
 Die Box hat kein Display, der Kopplungscode wird **per Sprachausgabe** angesagt.
 
 1. Box: `POST /pairing/start`
-   Body: `{ "device_id": "...", "hw_model": "rpi-zero2w", "agent_version": "0.3.1", "pairing_key": "..." }`
+   Body: `{ "device_id": "...", "hw_model": "rpi-zero2w", "agent_version": "0.3.1", "pairing_key": "...", "claim_token": "..." }` (`claim_token` nur aus einer Einrichtungsdatei, §9.7)
    Antwort: `{ "code": "471193", "expires_in": 600, "poll_token": "..." }`
    → Box sagt an: "Dein Code ist: vier – sieben – eins – eins – neun – drei" und wiederholt bei Tastendruck.
 2. Nutzer (Rolle ≥ `admin`) in der App: `POST /tenants/{tid}/devices/claim` mit `{ "code": "471193", "name": "Kinderzimmer" }`
@@ -473,6 +473,13 @@ Kopplungsschlüssel (v0.12): Die Box erzeugt einmal zusammen mit ihrer `device_i
 - Danach wird jeder Start mit anderem oder ohne Schlüssel mit `403 pairing_denied` abgelehnt. Wer nur eine `device_id` kennt, kann so keine Kopplung für fremde Boxen starten.
 - Boxen vor v0.12 senden keinen Schlüssel; ihre `device_id` bleibt ungebunden, bis sie einen senden.
 - Eine neu aufgesetzte Box (leere Datenbank) hat eine neue `device_id` und einen neuen Schlüssel.
+
+Einmal-Schlüssel (v0.14, `claim_token`): Mit einem Schlüssel aus einer Einrichtungsdatei (§9.7) beansprucht der Server den neuen Code sofort für den Haushalt des Schlüssels, unter dem Namen aus der Datei. Die Box muss den Code nicht ansagen; der erste Poll liefert die Zugangsdaten.
+- Den Schlüssel erzeugt ein Nutzer mit dem Recht, Boxen zu koppeln (Rolle ≥ `admin`): 256 Bit Zufall, Base64url, 43 Zeichen. Der Server zeigt ihn genau einmal und speichert nur den SHA-256-Hash.
+- Gültig 7 Tage, genau einmal verwendbar, höchstens 10 offene je Haushalt.
+- Beim Einlösen muss die Person, die ihn erzeugt hat, noch koppeln dürfen; sonst ist er wertlos.
+- Unbekannt, benutzt, abgelaufen oder wertlos: `403 claim_invalid`, und es entsteht kein Code. Die Box verwirft den Schlüssel dann und koppelt wie gewohnt mit angesagtem Code.
+- Ist die Box noch mit einem anderen Haushalt gekoppelt, gilt `409 device_paired_elsewhere` wie beim Code; die Box entkoppelt sich deshalb vorher selbst (§9.7).
 
 Erneutes Pairing:
 - Eine bereits gekoppelte Box darf `/pairing/start` erneut aufrufen (z. B. wenn die Poll-Antwort verloren ging). Beanspruchen darf den Code dann nur derselbe Mandant, sonst `409 device_paired_elsewhere`. Ein Mandantenwechsel erfordert vorher `unpair` (durch die Box oder in der App).
@@ -512,7 +519,7 @@ Alle Fehlerantworten der Geräte-API:
 ```json
 { "error": { "code": "pairing_expired", "message": "Pairing code expired" } }
 ```
-Codes: `invalid_request`, `unauthorized`, `invalid_credentials`, `not_found`, `rate_limited` (mit `Retry-After`), `pairing_expired`, `pairing_consumed`, `code_invalid`, `device_paired_elsewhere`, `pairing_denied` (v0.12, §7.1).
+Codes: `invalid_request`, `unauthorized`, `invalid_credentials`, `not_found`, `rate_limited` (mit `Retry-After`), `pairing_expired`, `pairing_consumed`, `code_invalid`, `device_paired_elsewhere`, `pairing_denied` (v0.12, §7.1), `claim_invalid` (v0.14, §7.1).
 
 ---
 
@@ -666,6 +673,46 @@ Die ersten 60 min nach einer erfolgreichen Kopplung, gemessen ab `paired_at` (Wa
 - sammelt sie die gedrückten Tasten für `button_test` (§6.4);
 - quittiert sie jeden Tastendruck, während nichts spielt, mit einem kurzen Ton (prüft zugleich den Lautsprecher).
 
+### 9.7 Einrichtungsdatei (v0.14)
+Für eine Box ohne Lautsprecher und Tasten, oder einfach bequemer: Die Web-App erstellt eine Datei `myboxi-setup.json`. Der Nutzer kopiert sie nach dem Flashen auf die Boot-Partition der SD-Karte (`bootfs`, auf der Box `/boot/firmware/`).
+
+```json
+{
+  "myboxi_setup": 1,
+  "server_url": "https://app.myboxi.eu",
+  "claim_token": "q3V0bWJ0ZXN0LXRva2VuLTAxMjM0NTY3ODlhYmNkZWZ",
+  "wifi": { "ssid": "Heimnetz", "password": "geheimes-wlan" },
+  "wifi_country": "AT",
+  "ssh_authorized_keys": ["ssh-ed25519 AAAA… ich@pc"]
+}
+```
+
+| Feld | Pflicht | Bedeutung |
+|---|---|---|
+| `myboxi_setup` | ja | Formatversion, `1` |
+| `server_url` | ja | Nur `https://` (§9.3) |
+| `server_ca` | nein | Eigenes CA-Zertifikat eines selbst betriebenen Servers (§9.3) |
+| `claim_token` | nein | Einmal-Schlüssel (§7.1) |
+| `wifi` | nein | `ssid` (1 bis 32 Byte), `password` (8 bis 63 Zeichen; fehlt oder leer: offenes WLAN) |
+| `wifi_country` | nein | ISO-3166-Ländercode für die Funkregeln |
+| `ssh_authorized_keys` | nein | Bis zu 5 öffentliche OpenSSH-Schlüssel |
+
+Erstellen:
+- Die Web-App erzeugt den Einmal-Schlüssel auf dem Server.
+- WLAN-Daten und SSH-Schlüssel fügt der Browser hinzu und schreibt die Datei lokal. Das WLAN-Passwort erreicht den Server nie.
+- Ein selbst betriebener Server kann sein eigenes CA-Zertifikat mitgeben (Einstellung `box_ca_file`).
+
+Auf der Box, bei jedem Start, an dem die Datei vorliegt (Systemdienst als root, nach NetworkManager und vor den Nutzersitzungen, also vor dem Agent):
+1. Datei prüfen (höchstens 64 KiB). Ist sie unbrauchbar, wird sie in `myboxi-setup.failed.json` umbenannt und nicht erneut versucht.
+2. `wifi_country` setzen; das WLAN als NetworkManager-Verbindung mit automatischem Verbinden anlegen.
+3. Mit `ssh_authorized_keys`: das Konto `admin` (sudo) anlegen, Anmeldung nur mit diesen Schlüsseln, SSH einschalten. Passwort-Anmeldung und Root-Login bleiben aus.
+4. Server, CA und Einmal-Schlüssel als Übergabedatei für den Agent ablegen (nur für den Agent-Nutzer lesbar), dann `myboxi-setup.json` löschen.
+5. Der Agent übernimmt die Übergabe beim Start und löscht sie:
+   - Eine andere Server-URL gilt wie in §9.3.
+   - Ist die Box auf diesem Server noch gekoppelt und kommt ein Einmal-Schlüssel mit, entkoppelt sie sich dort (§7.3) und koppelt sich mit dem Schlüssel neu.
+
+Ohne Einrichtungsdatei bleibt alles wie bisher: Einrichtungsmodus (§9.3) und angesagter Code (§9.5).
+
 ---
 
 ## 10. Sicherheit & Datenschutz
@@ -677,6 +724,7 @@ Die ersten 60 min nach einer erfolgreichen Kopplung, gemessen ab `paired_at` (Wa
 - Soloist nimmt den API-Key nur als Kommandozeilenargument an. Er ist damit für lokale Prozesse der Box lesbar, nie für das Netz; die Box hat keine weiteren Benutzerkonten mit Login.
 - Soloist-Key, Device-Secret, MQTT-Passwort und Kopplungsschlüssel nie in Logs, Crash-Reports oder Sync-Payloads. Der Log-Filter erkennt diese Schlüssel auch mit Präfix (z. B. `mqtt_password`).
 - Das Passwort des Broker-Admins kennt nur der MQTT-Dienst des Servers (eigene Env-Datei), nicht Web-UI und Worker.
+- Einrichtungsdatei (§9.7): Sie liegt bis zum ersten Start unverschlüsselt auf der SD-Karte und wird danach gelöscht. Wer die Karte in der Hand hat, hat ohnehin die Box. Der Einmal-Schlüssel ist nur gehasht gespeichert, kurz gültig und einmal verwendbar. Weder WLAN-Passwort noch SSH-Schlüssel noch Einmal-Schlüssel erscheinen in Logs.
 - Ein eigenes CA-Zertifikat (§9.3, v0.13) gilt nur für die Verbindungen zum gewählten Server. Wer es erstellt hat, könnte sonst beliebige HTTPS-Verbindungen der Box fälschen, etwa den Soloist-Download.
 - v1 ohne Mikrofon. Kommt Sprache in v2, bleibt die Verarbeitung vollständig lokal; kein Audio zum Server.
 - Events: nur die Liste in §6.5, 30 Tage Aufbewahrung.
@@ -738,6 +786,12 @@ Der Agent wird in M0 gegen einen **Mock-Server** entwickelt, der die Endpunkte a
 ---
 
 ## 14. Änderungen
+
+**v0.14 (2026-10-01)** — Einrichtungsdatei; Protokollversion bleibt `v1`, alle Änderungen additiv.
+- §4: `claim_token` in `secret`.
+- §7.1, §7.4: optionaler `claim_token` beim Kopplungsstart, Fehler `claim_invalid`.
+- §9.7: Einrichtungsdatei `myboxi-setup.json` (WLAN, Land, SSH, Server, CA, Einmal-Schlüssel).
+- §10: Schutz der Einrichtungsdatei.
 
 **v0.13 (2026-09-26)** — Selbst betriebene Server ohne öffentliches Zertifikat; keine Änderung am Protokoll.
 - §4: `sync_state.server_ca`; `secret` nennt `mqtt_password` und `pairing_key`.

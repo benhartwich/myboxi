@@ -112,7 +112,7 @@ apt-get autoremove -y
 apt-get clean
 rm -rf /var/lib/apt/lists/*
 
-systemctl enable myboxi-firstboot.service myboxi-updater.timer
+systemctl enable myboxi-firstboot.service myboxi-provision.service myboxi-updater.timer
 # Firewall: inbound only from the home network (SPEC v0.9 §10, /etc/nftables.conf).
 systemctl enable nftables.service
 # Spotify Connect announces itself over mDNS on UDP 5353; avahi would hold that port and the
@@ -140,6 +140,24 @@ runuser -u myboxi -- env MYBOXI_AGENT_PROMPTS_DIR=/opt/myboxi-agent/current/prom
 rm -rf /tmp/doctor
 openssl version
 CHROOT
+
+echo "== boot order"
+# No ordering cycles: systemd would break one by dropping a unit, NetworkManager for example
+# (that happened up to image 0.7.0). cloud-init's generator enables cloud-init.target at boot,
+# so it is linked here for the check only.
+GEN_LINK="$MNT/etc/systemd/system/multi-user.target.wants/cloud-init.target"
+ln -s /usr/lib/systemd/system/cloud-init.target "$GEN_LINK"
+BOOT_LOG=$(SYSTEMD_LOG_LEVEL=debug systemd-analyze --root="$MNT" verify --man=no \
+    multi-user.target 2>&1 || true)
+rm -f "$GEN_LINK"
+if grep -qi "ordering cycle" <<<"$BOOT_LOG"; then
+    grep -i -A3 "ordering cycle" <<<"$BOOT_LOG"
+    exit 1
+fi
+for unit in NetworkManager.service myboxi-firstboot.service myboxi-provision.service \
+    systemd-user-sessions.service; do
+    grep -q "Installed new job $unit/start" <<<"$BOOT_LOG" || { echo "$unit not started at boot"; exit 1; }
+done
 
 echo "== update bundle"
 BUNDLE="$OUT/myboxi-agent-$AGENT_VERSION-arm64.tar.xz"

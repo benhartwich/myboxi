@@ -161,3 +161,23 @@ class DeviceCommand(Timestamps, Base):
     result: Mapped[str | None] = mapped_column(Text)
     message: Mapped[str | None] = mapped_column(Text)
     acked_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ClaimToken(UuidPk, Timestamps, Base):
+    """SPEC v0.14 §7.1, §9.7: one-time token from a setup file. The box that presents it pairs
+    itself with the household; only its SHA-256 is stored."""
+
+    __tablename__ = "claim_token"
+    __table_args__ = (Index("ix_claim_token_tenant_created", "tenant_id", "created_at"),)
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("tenant.id", ondelete="CASCADE"))
+    token_hash: Mapped[bytes] = mapped_column(LargeBinary, unique=True)
+    device_name: Mapped[str] = mapped_column(Text)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("app_user.id", ondelete="SET NULL")
+    )
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    device_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("device.id", ondelete="SET NULL")
+    )

@@ -23,7 +23,7 @@ from myboxi_server.auth.passwords import hash_secret_async, verify_secret_async
 from myboxi_server.auth.tokens import hash_token, new_token
 from myboxi_server.domain.authz import Perm, TenantContext
 from myboxi_server.domain.errors import ConflictError, DomainError, NotFoundError
-from myboxi_server.models import Device, DeviceConfig, Pairing
+from myboxi_server.models import ClaimToken, Device, DeviceConfig, Membership, Pairing
 
 CODE_TTL = dt.timedelta(minutes=10)
 # A claimed code stays deliverable for this long after the claim.
@@ -46,6 +46,11 @@ class PairingDeniedError(DomainError):
     """SPEC v0.12 §7.1: the device id is known with another pairing key."""
 
 
+class ClaimInvalidError(DomainError):
+    """SPEC v0.14 §7.1: the claim token is unknown, used, expired, or its creator may no
+    longer pair boxes in that household."""
+
+
 def _key_hash(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()  # 256 random bits: no slow hash needed
 
@@ -57,11 +62,13 @@ async def start(
     hw_model: str,
     agent_version: str,
     pairing_key: str | None = None,
+    claim_token: str | None = None,
 ) -> StartedPairing:
     """SPEC §7.1 step 1. The caller commits.
 
     The first start with a pairing key binds the device id to it (trust on first use); later
-    starts must present the same key, so knowing a device id is not enough to take a box."""
+    starts must present the same key, so knowing a device id is not enough to take a box.
+    With a claim token from a setup file (v0.14) the new code is claimed at once."""
     device = await db.get(Device, device_id, with_for_update=True)
     if device is None:
         device = Device(id=device_id, hw_model=hw_model, agent_version=agent_version)
@@ -101,8 +108,39 @@ async def start(
                 )
         except IntegrityError:
             continue  # code collision among open codes
+        if claim_token is not None:
+            await _redeem(db, claim_token, code)
         return StartedPairing(code, poll_token, int(CODE_TTL.total_seconds()))
     raise ConflictError("no free pairing code")
+
+
+async def _redeem(db: AsyncSession, token: str, code: str) -> None:
+    """Claim ``code`` for the token's household, in the name of the admin who made the setup
+    file, as long as they still may (SPEC v0.14 §7.1)."""
+    row = await db.scalar(
+        select(ClaimToken)
+        .where(
+            ClaimToken.token_hash == hash_token(token),
+            ClaimToken.used_at.is_(None),
+            ClaimToken.expires_at > func.now(),
+        )
+        .with_for_update()
+    )
+    if row is None or row.created_by is None:
+        raise ClaimInvalidError("claim token not valid")
+    role = await db.scalar(
+        select(Membership.role).where(
+            Membership.tenant_id == row.tenant_id, Membership.user_id == row.created_by
+        )
+    )
+    ctx = (
+        TenantContext(tenant_id=row.tenant_id, user_id=row.created_by, role=role) if role else None
+    )
+    if ctx is None or not ctx.can(Perm.DEVICE_CLAIM):
+        raise ClaimInvalidError("claim token not valid")
+    device = await claim(db, ctx, code=code, name=row.device_name)
+    row.used_at = _now()
+    row.device_id = device.id
 
 
 class CodeInvalidError(DomainError):

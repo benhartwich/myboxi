@@ -7,12 +7,13 @@ import asyncio
 import datetime as dt
 from pathlib import Path
 
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from myboxi_server.auth.sessions import IDLE_TIMEOUT
 from myboxi_server.models import (
     CaseRequest,
+    ClaimToken,
     DeviceCommand,
     Event,
     Invitation,
@@ -31,6 +32,7 @@ UPLOAD_RETENTION = dt.timedelta(days=30)
 TMP_FILE_RETENTION = dt.timedelta(hours=24)
 CASE_REQUEST_RETENTION = dt.timedelta(days=365)  # unconfirmed ones go after 48 h
 COMMAND_RETENTION = dt.timedelta(days=7)  # remote commands (SPEC §6.2)
+CLAIM_TOKEN_RETENTION = dt.timedelta(days=30)
 
 
 async def purge_expired(db: AsyncSession, now: dt.datetime | None = None) -> dict[str, int]:
@@ -46,6 +48,10 @@ async def purge_expired(db: AsyncSession, now: dt.datetime | None = None) -> dic
         "rate_limit": delete(RateLimit).where(RateLimit.window_start < now - RATE_LIMIT_RETENTION),
         "device_command": delete(DeviceCommand).where(
             DeviceCommand.created_at < now - COMMAND_RETENTION
+        ),
+        # SPEC v0.14 §7.1: setup file tokens, 30 days after use or expiry
+        "claim_token": delete(ClaimToken).where(
+            func.coalesce(ClaimToken.used_at, ClaimToken.expires_at) < now - CLAIM_TOKEN_RETENTION
         ),
         "case_request": delete(CaseRequest).where(
             or_(
