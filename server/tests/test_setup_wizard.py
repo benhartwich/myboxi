@@ -274,6 +274,8 @@ async def test_entry_points(app: FastAPI, client: httpx.AsyncClient) -> None:
     assert "Code eingeben" in start
     assert 'action="/t/' in start
     assert "Image herunterladen" in start
+    # the wizard stays open while the image downloads (new tab)
+    assert re.search(r'href="[^"]+" target="_blank" rel="noopener">Image herunterladen', start)
     await pair_device(app, client, t.tenant_id)
     home = (await client.get(f"/t/{t.tenant_id}/")).text
     assert "Einrichtung fortsetzen" in home
