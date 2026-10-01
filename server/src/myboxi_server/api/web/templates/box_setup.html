@@ -5,5 +5,5 @@
 <a class="back" href="/t/{{ tid }}/boxes/{{ device.id }}">{{ icon.back() }}{{ device.name or "Box" }}</a>
 <h1>Einrichtung: {{ device.name or "Box" }}</h1>
 {% include "_setup_steps.html" %}
-<p class="muted">Hilfe bei Problemen: <a href="{{ docs_url }}/box-inbetriebnahme.md#fehlersuche" rel="noopener">Fehlersuche</a></p>
+<p class="muted">Hilfe bei Problemen: <a href="{{ docs_url }}/box-inbetriebnahme.md#fehlersuche" target="_blank" rel="noopener">Fehlersuche</a></p>
 {% endblock %}
