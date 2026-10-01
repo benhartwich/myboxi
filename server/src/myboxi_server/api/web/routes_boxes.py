@@ -200,9 +200,16 @@ def _box_ca(settings: Settings) -> str | None:
     return pem + "\n" if pem.startswith("-----BEGIN CERTIFICATE-----") and len(pem) < 8192 else None
 
 
+def _help_url(settings: Settings) -> str:
+    return f"{settings.docs_url.rstrip('/')}/box-inbetriebnahme.md#ssh-und-kommandozeile"
+
+
 @router.get("/prepare")
-async def prepare_form(request: Request, session: CurrentSession, ctx: ClaimCtx) -> Response:
-    return render(request, "box_prepare.html", {"step": "name", "form": {}},
+async def prepare_form(
+    request: Request, session: CurrentSession, ctx: ClaimCtx, settings: SettingsDep
+) -> Response:
+    return render(request, "box_prepare.html",
+                  {"step": "name", "form": {}, "ssh_help": _help_url(settings)},
                   session=session, ctx=ctx)  # fmt: skip
 
 
@@ -222,7 +229,8 @@ async def prepare_file(
     except DomainError as exc:
         await db.rollback()
         return render(request, "box_prepare.html",
-                      {"step": "name", "form": {"name": name}, "error": exc.message},
+                      {"step": "name", "form": {"name": name}, "error": exc.message,
+                       "ssh_help": _help_url(settings)},
                       session=session, ctx=ctx, status_code=400)  # fmt: skip
     await db.commit()
     setup: dict[str, Any] = {
@@ -236,7 +244,7 @@ async def prepare_file(
         request,
         "box_prepare.html",
         {"step": "file", "setup_json": json.dumps(setup), "token": new.row,
-         "countries": COUNTRIES, "state": "waiting"},
+         "countries": COUNTRIES, "state": "waiting", "ssh_help": _help_url(settings)},
         session=session,
         ctx=ctx,
     )  # fmt: skip

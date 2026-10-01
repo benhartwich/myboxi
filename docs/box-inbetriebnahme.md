@@ -44,6 +44,8 @@ Später lässt sich der Einrichtungsmodus jederzeit starten: **`volume_up` + `vo
 
 Sobald die Box online ist, sagt sie ihren Kopplungscode an: „Dein Code ist: vier – sieben – …“. Wiederholen: **`play_pause`** drücken. Der Code gilt 10 Minuten, danach kommt ein neuer.
 
+Ohne Lautsprecher: per SSH `myboxi code` (Abschnitt „SSH und Kommandozeile“), oder gleich die Einrichtungsdatei nehmen (Abschnitt 2).
+
 In der Web-UI (https://app.myboxi.eu) → **Boxen** → „Box hinzufügen“ → Code und Name eingeben. Die Box bestätigt mit „Geschafft!“ und lädt sofort alle Inhalte.
 
 In der ersten Stunde nach dem Koppeln (Einrichtungsphase, SPEC §9.6) piept die Box bei jedem Tastendruck und meldet die gedrückten Tasten an den Assistenten; sie gleicht sich alle 30 Sekunden mit dem Server ab.
@@ -130,16 +132,53 @@ Box meldet sich nach der Einrichtungsdatei nicht? Die SD-Karte am Computer anseh
 - `myboxi-setup.failed.json` liegt da: Die Datei war unbrauchbar. Meist ist der WLAN-Name falsch geschrieben. Dann eine neue Datei erstellen und diese löschen.
 - Keine der beiden: Die Box hat die Datei übernommen. Stimmt das WLAN-Passwort nicht, öffnet sie nach 2 Minuten das Einrichtungs-WLAN `Myboxi-NNNN`.
 
-Mit SSH (Schlüssel über die Einrichtungsdatei als Nutzer `admin`, oder über den Imager):
-
-```text
-sudo -u myboxi XDG_RUNTIME_DIR=/run/user/$(id -u myboxi) /opt/myboxi-agent/current/.venv/bin/myboxi-agent doctor
-sudo journalctl _SYSTEMD_USER_UNIT=myboxi-agent.service -f      # Agent
-sudo journalctl -u myboxi-setupd -f                             # Einrichtungsmodus
-sudo journalctl -u myboxi-provision                             # Einrichtungsdatei
-sudo journalctl _SYSTEMD_USER_UNIT=myboxi-soloist.service -f    # Spotify
-```
+Mit SSH: `myboxi doctor` prüft NFC-Leser, Audio, Netzwerk und Server und nennt, was fehlt. Zugang, Befehle und Logs stehen im nächsten Abschnitt.
 
 Die mitgelieferten Ansagen spricht die Stimme „Thorsten-Voice/Kokoro“ (Apache-2.0, Lizenzhinweis in `/opt/myboxi-agent/current/prompts/NOTICE.txt`).
 
 Eigene Ansagen, z. B. mit deiner Stimme: Opus-Dateien mit dem Namen der Ansage (siehe `agent/prompts.toml`, z. B. `unknown_token.opus`) nach `/var/lib/myboxi/prompts/` kopieren (Besitzer `myboxi`). Sie haben Vorrang vor den mitgelieferten.
+
+
+## SSH und Kommandozeile
+
+Für Fehlersuche und Bastler; im Alltag braucht die Box kein SSH.
+
+**Zugang einrichten:**
+- Am einfachsten über die Einrichtungsdatei: unter „Erweitert: SSH-Zugang“ deinen öffentlichen Schlüssel eintragen. Die Box legt den Nutzer **`admin`** an: Anmeldung nur mit Schlüssel, `sudo` ohne Passwort.
+- Nachträglich, ohne neu zu koppeln: eine kleine `myboxi-setup.json` auf das Laufwerk `bootfs` der SD-Karte legen und die Box starten. Ohne Kopplungsschlüssel bleibt sie mit deinem Haushalt gekoppelt.
+  ```json
+  {
+    "myboxi_setup": 1,
+    "server_url": "https://app.myboxi.eu",
+    "ssh_authorized_keys": ["ssh-ed25519 AAAA… dein-name@rechner"]
+  }
+  ```
+- Oder schon beim Flashen im Raspberry Pi Imager einen SSH-Schlüssel setzen. Dann gilt der Nutzername, den du dort gewählt hast.
+- Deinen öffentlichen Schlüssel findest du am Rechner meist unter `~/.ssh/id_ed25519.pub`. Gibt es keinen, erzeugt `ssh-keygen -t ed25519` einen.
+
+**Anmelden:** `ssh admin@<Adresse der Box>`.
+- Die Adresse steht in der Geräteliste deines Routers; das Gerät heißt `myboxi-NNNN` (die Ziffern wie beim Einrichtungs-WLAN).
+- Bei einer Fritz!Box geht oft auch `ssh admin@myboxi-NNNN.fritz.box`. Namen auf `.local` beantwortet die Box nicht.
+- SSH ist nur aus dem Heimnetz erreichbar, Anmeldung mit Passwort ist abgeschaltet.
+
+**Befehle auf der Box:**
+
+| Befehl | Wozu |
+|---|---|
+| `myboxi code` | Kopplungscode anzeigen, z. B. ohne Lautsprecher. Gilt 10 Minuten, in der App unter **Boxen → Box hinzufügen** eintragen. |
+| `myboxi status` | Zustand: gekoppelt, Server, letzter Fehler, Wiedergabe |
+| `myboxi doctor` | Selbsttest: NFC-Leser, Audio, Netzwerk, Server |
+| `myboxi sync` | Sofort mit dem Server abgleichen |
+| `myboxi repair` | Entkoppeln und neu koppeln |
+| `myboxi server https://… [--ca myboxi-ca.pem]` | Anderen Server eintragen ([selbst-hosten.md](selbst-hosten.md)) |
+
+`myboxi` gibt es ab Image 0.8.1. Auf älteren Images steht statt `myboxi` der lange Pfad `sudo /opt/myboxi-agent/current/.venv/bin/myboxi-agent`.
+
+**Logs:**
+
+```text
+sudo journalctl _SYSTEMD_USER_UNIT=myboxi-agent.service -f      # Agent
+sudo journalctl -u myboxi-provision                             # Einrichtungsdatei
+sudo journalctl -u myboxi-setupd -f                             # Einrichtungsmodus
+sudo journalctl _SYSTEMD_USER_UNIT=myboxi-soloist.service -f    # Spotify
+```

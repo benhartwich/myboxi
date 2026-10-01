@@ -152,6 +152,8 @@ async def test_the_wizard_offers_the_setup_file(app: FastAPI, client: httpx.Asyn
     await login(client, t.owner_email)
     page = await client.get(f"/t/{t.tenant_id}/setup")
     assert f'href="/t/{t.tenant_id}/boxes/prepare"' in page.text
+    assert "myboxi code" in page.text  # without a speaker (docs: SSH und Kommandozeile)
+    assert "#ssh-und-kommandozeile" in page.text
 
 
 async def test_old_tokens_are_purged(app: FastAPI) -> None:
