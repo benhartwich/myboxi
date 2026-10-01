@@ -56,11 +56,11 @@ dtoverlay=vc4-kms-v3d,noaudio
 
 ## Prüfen
 
-Mit SSH-Zugang (siehe `docs/box-inbetriebnahme.md`):
+Mit SSH-Zugang (siehe `docs/box-inbetriebnahme.md`, „SSH und Kommandozeile“):
 
 ```text
 sudo i2cdetect -y 1                       # PN532 erscheint als 24
-sudo -u myboxi XDG_RUNTIME_DIR=/run/user/$(id -u myboxi) /opt/myboxi-agent/current/.venv/bin/myboxi-agent doctor
+myboxi doctor
 ```
 
 `doctor` prüft NFC-Leser, Audio, Netzwerk, Agent und Server und nennt, was fehlt.

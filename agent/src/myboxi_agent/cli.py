@@ -57,6 +57,34 @@ def _cmd_status(args: argparse.Namespace, settings: Settings) -> int:
     return _control(settings, {"cmd": "status"})
 
 
+def describe_pairing(status: dict[str, Any]) -> str:
+    """``myboxi code``: the pairing state for a person on SSH (SPEC §9.5), without a speaker."""
+    if status.get("paired"):
+        return 'The box is paired. You find it in the app under "Boxen".'
+    code = status.get("pairing_code")
+    if code:
+        spaced = f"{code[:3]} {code[3:]}"
+        return (
+            f"Pairing code: {spaced}\n"
+            "Valid for 10 minutes, then the box gets a new one. Enter it in the app under "
+            '"Boxen -> Box hinzufügen".'
+        )
+    error = status.get("last_error")
+    reason = f": {error}" if error else ", it is still connecting"
+    return f"No code yet: the box cannot reach {status.get('server_url') or 'its server'}{reason}."
+
+
+def _cmd_code(args: argparse.Namespace, settings: Settings) -> int:
+    del args
+    try:
+        status = asyncio.run(request(settings.control_socket, {"cmd": "status"}))
+    except (FileNotFoundError, ConnectionRefusedError, PermissionError):
+        print(f"agent not running ({settings.control_socket})", file=sys.stderr)
+        return 2
+    print(describe_pairing(status))
+    return 0
+
+
 def _cmd_sync(args: argparse.Namespace, settings: Settings) -> int:
     del args
     return _control(settings, {"cmd": "sync_now"})
@@ -283,6 +311,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=_cmd_run)
 
     sub.add_parser("status", help="state of the running agent").set_defaults(func=_cmd_status)
+    sub.add_parser("code", help="pairing code, for pairing without a speaker").set_defaults(
+        func=_cmd_code
+    )
     sub.add_parser("sync", help="sync with the server now").set_defaults(func=_cmd_sync)
     sub.add_parser("repair", help="unpair and pair again (SPEC §9.4)").set_defaults(
         func=_cmd_repair

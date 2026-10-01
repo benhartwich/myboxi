@@ -56,6 +56,7 @@
     <span class="num">5</span>
     <h2>… und Code eingeben</h2>
     <p>Sobald die Box online ist, sagt sie einen sechsstelligen Code an. „Play/Pause“ wiederholt ihn.</p>
+    <p class="muted">Noch kein Lautsprecher? Per SSH auf der Box zeigt <code>myboxi code</code> den Code (<a href="{{ docs_url }}/box-inbetriebnahme.md#ssh-und-kommandozeile" target="_blank" rel="noopener">Hilfe zu SSH</a>). Einfacher geht es mit der Einrichtungsdatei aus Schritt 3.</p>
     {% if ctx.can(Perm.DEVICE_CLAIM) %}
     {% if claim_error %}<p class="msg error" role="alert">{{ claim_error }}</p>{% endif %}
     <form method="post" action="/t/{{ tid }}/boxes/add" class="stack">

@@ -158,3 +158,12 @@ def test_boot_order_has_no_cycle_with_cloud_init() -> None:
     build = (FILES.parent / "build.sh").read_text()
     assert "myboxi-provision.service" in build
     assert "ordering cycle" in build
+
+
+def test_the_box_has_a_short_command_for_ssh() -> None:
+    """``myboxi code`` instead of the venv path (docs/box-inbetriebnahme.md)."""
+    wrapper = FILES / "usr" / "local" / "bin" / "myboxi"
+    assert wrapper.stat().st_mode & 0o111
+    text = wrapper.read_text()
+    assert "sudo -u myboxi" in text
+    assert "/opt/myboxi-agent/current/.venv/bin/myboxi-agent" in text

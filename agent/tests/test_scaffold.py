@@ -48,3 +48,16 @@ def test_json_formatter_redacts_extras() -> None:
 def test_cli_version(capsys: pytest.CaptureFixture[str]) -> None:
     assert main(["version"]) == 0
     assert "myboxi-agent" in capsys.readouterr().out
+
+
+def test_code_explains_the_pairing_state() -> None:
+    """``myboxi code`` over SSH, for a box without a speaker (SPEC §9.5)."""
+    from myboxi_agent.cli import describe_pairing
+
+    assert "471 193" in describe_pairing({"paired": False, "pairing_code": "471193"})
+    assert "is paired" in describe_pairing({"paired": True, "pairing_code": None})
+    waiting = describe_pairing({"paired": False, "pairing_code": None,
+                                "server_url": "https://app.myboxi.eu",
+                                "last_error": "unreachable: timeout"})  # fmt: skip
+    assert "https://app.myboxi.eu" in waiting
+    assert "unreachable: timeout" in waiting

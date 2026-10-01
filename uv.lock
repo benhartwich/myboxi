@@ -580,7 +580,7 @@ wheels = [
 
 [[package]]
 name = "myboxi-agent"
-version = "0.8.0"
+version = "0.8.1"
 source = { editable = "agent" }
 dependencies = [
     { name = "aiomqtt" },

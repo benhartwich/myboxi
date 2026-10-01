@@ -1,0 +1,9 @@
+#!/bin/sh
+# The box's command line over SSH (docs/box-inbetriebnahme.md, "SSH und Kommandozeile"):
+#   myboxi code | status | doctor | sync | repair | server URL [--ca FILE]
+# Runs the agent's CLI as its user, in its session (control socket, audio).
+set -eu
+uid=$(id -u myboxi)
+exec sudo -u myboxi env XDG_RUNTIME_DIR="/run/user/$uid" sh -c '
+    set -a; . /etc/myboxi-agent/myboxi-agent.env; set +a
+    exec /opt/myboxi-agent/current/.venv/bin/myboxi-agent "$@"' myboxi-agent "$@"
