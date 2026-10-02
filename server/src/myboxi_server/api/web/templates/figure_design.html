@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% import "_icons.html" as icon %}
+{% block title %}Figur gestalten · Myboxi{% endblock %}
+{% block head %}<script type="module" src="{{ asset('case.js') }}"></script>{% endblock %}
+{% block main_class %}wide{% endblock %}
+{% block content %}
+<div class="case-head">
+  <p class="eyebrow">Druckvorlage</p>
+  <h1>Figur gestalten</h1>
+  <p class="muted">Ein Sockel mit eingebautem NFC-Chip macht jede Figur zur Box-Figur: eine Lieblingsfigur daraufkleben oder Klemmbausteine aufstecken. Form, Farben und Namen wählen, Druckdateien laden.</p>
+</div>
+
+<div class="case">
+  <section class="viewer" aria-label="Vorschau">
+    <div class="viewer-stage" id="stage" data-preview="/gestalten/figur/vorschau">
+      <img class="viewer-fallback" src="{{ asset('figure/' ~ cfg.shape ~ '.png') }}" alt="{{ shape_label }} (Beispielbild)" width="480" height="360">
+      <p class="viewer-note" id="viewer-note" role="status" hidden></p>
+    </div>
+    <div class="viewer-tools js-only"><span class="muted viewer-hint">Ziehen zum Drehen</span></div>
+  </section>
+
+  <form class="case-form" method="get" action="/gestalten/figur" id="case-form"
+        data-defaults="{{ defaults_json }}" data-suggested="{{ suggested_json }}"
+        data-page="/gestalten/figur" data-download="/gestalten/figur/download.zip"
+        data-suggest-by="shape" data-reframe="size,top">
+    <fieldset class="field">
+      <legend>Form</legend>
+      <div class="form-cards">
+        {% for key, label, text in shapes %}
+        <label class="form-card">
+          <input type="radio" name="shape" value="{{ key }}" {% if cfg.shape == key %}checked{% endif %}>
+          <img src="{{ asset('figure/' ~ key ~ '.png') }}" alt="" width="240" height="180" loading="lazy">
+          <strong>{{ label }}</strong>
+          <span class="muted">{{ text }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>Oberseite</legend>
+      <div class="choice-row">
+        {% for key, label, text in tops %}
+        <label class="choice" title="{{ text }}"><input type="radio" name="top" value="{{ key }}" {% if cfg.top == key %}checked{% endif %}><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+      <span class="muted">Flach: eine Figur daraufkleben, z. B. ein Tier aus dem Kinderzimmer. Noppen: eine Minifigur oder etwas Gebautes aus Klemmbausteinen aufstecken.</span>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>Größe</legend>
+      <div class="choice-row">
+        {% for s in (40, 50) %}
+        <label class="choice"><input type="radio" name="size" value="{{ s }}" {% if cfg.size == s %}checked{% endif %}><span>{{ s }} mm</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <label class="field">Name vorn auf dem Sockel
+      <input name="name" value="{{ cfg.name }}" maxlength="{{ max_label }}" placeholder="z. B. Lotta" autocomplete="off">
+      <span class="muted">Bis {{ max_label }} Zeichen. Leer lassen geht auch.</span>
+    </label>
+
+    {% for field, role, label in color_roles %}
+    <fieldset class="field">
+      <legend>Farbe {{ label }}</legend>
+      <div class="swatches">
+        {% for key, color in palette.items() %}
+        <label class="swatch" title="{{ color[0] }}">
+          <input type="radio" name="{{ field }}" value="{{ key }}" {% if chosen[role] == key %}checked{% endif %}>
+          <span class="dot sw-{{ key }}" aria-hidden="true"></span>
+          <span class="sr-only">{{ color[0] }}</span>
+        </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    {% endfor %}
+
+    <details class="field tech" {% if cfg.tag != 'coin' or cfg.colors != 'multi' or cfg.tolerance != 0.2 %}open{% endif %}>
+      <summary>Technik</summary>
+      <div class="stack">
+        <label>NFC-Chip
+          <select name="tag">
+            <option value="coin" {% if cfg.tag == 'coin' %}selected{% endif %}>NFC-Münze NTAG213/215, Ø 25 mm</option>
+            <option value="sticker" {% if cfg.tag == 'sticker' %}selected{% endif %}>NFC-Aufkleber NTAG213/215, Ø 25 mm</option>
+          </select>
+        </label>
+        <label>Druck
+          <select name="colors">
+            <option value="multi" {% if cfg.colors == 'multi' %}selected{% endif %}>Zweifarbig (z. B. Snapmaker U1, AMS)</option>
+            <option value="mono" {% if cfg.colors == 'mono' %}selected{% endif %}>Einfarbig, Name graviert</option>
+          </select>
+        </label>
+        <label>Spiel für die Noppen
+          <select name="tolerance">
+            {% for t in (0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4) %}<option value="{{ t }}" {% if cfg.tolerance == t %}selected{% endif %}>{{ '%.2f' | format(t) | replace('.', ',') }} mm{% if t == 0.2 %} (passt meistens){% endif %}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+    </details>
+
+    <button type="submit" class="secondary no-js-only">Vorschau aktualisieren</button>
+  </form>
+</div>
+
+<section class="card case-result" aria-live="polite">
+  <p class="msg error" id="case-error" {% if not error %}hidden{% endif %}>{{ error or '' }}</p>
+  <div class="actions">
+    <a class="button" id="case-download" href="/gestalten/figur/download.zip{% if query %}?{{ query }}{% endif %}">{{ icon.download(20) }}Druckdateien laden</a>
+  </div>
+  <p class="muted">ZIP mit 3MF für Orca und den Snapmaker U1, STL und Anleitung. Die 3MF hält den Druck an der richtigen Stelle an: Chip einlegen, weiter. Druckdateien stehen unter CC BY-SA 4.0.</p>
+  <p class="muted">Danach den Sockel auf die Box legen und die Figur in der App unter „Figuren“ übernehmen. Der Chip ist ganz eingeschlossen; Magnete braucht es nicht.</p>
+  <p class="muted"><a href="/gestalten">Box gestalten</a> · <a href="{{ docs_url }}/gehaeuse.md#figurensockel" target="_blank" rel="noopener">Anleitung</a></p>
+</section>
+{% endblock %}

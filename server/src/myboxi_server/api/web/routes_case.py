@@ -15,6 +15,9 @@ from pydantic import ValidationError
 
 from myboxi_case.config import MAX_NAME, PALETTE, ROLES, SUGGESTED, CaseConfig
 from myboxi_case.export import file_stem
+from myboxi_case.figures import MAX_LABEL, FigureConfig, FigureError
+from myboxi_case.figures import SUGGESTED as FIGURE_SUGGESTED
+from myboxi_case.figures import file_stem as figure_stem
 from myboxi_case.layout import LayoutError, layout_for
 from myboxi_server.api.web.deps import (
     DbSession,
@@ -176,6 +179,117 @@ async def case_download(request: Request, settings: SettingsDep) -> Response:
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{file_stem(cfg)}.zip"',
+            "Cache-Control": "private, max-age=86400",
+        },
+    )
+
+
+# --- Figur gestalten: figure bases with an enclosed NFC chip --------------------------------------
+
+FIGURE_SHAPES = (
+    ("round", "Rund", "Der Klassiker, passt auf jede Box."),
+    ("square", "Eckig", "Viel Platz für Noppen."),
+    ("heart", "Herz", "Mit abgerundeter Spitze."),
+    ("star", "Stern", "Mit runden Zacken."),
+)
+FIGURE_TOPS = (
+    ("flat", "Flach", "Eine Figur daraufkleben, z. B. Tier- oder Spielfiguren."),
+    ("bricks", "Noppen", "Für Klemmbausteine: Minifigur oder Gebautes aufstecken."),
+)
+FIGURE_COLOR_ROLES = (("color_base", "base", "Sockel"), ("color_accent", "accent", "Name"))
+
+
+def _figure_message(exc: ValidationError) -> str:
+    for err in exc.errors():
+        if err["loc"] and str(err["loc"][0]) == "name":
+            if err["type"] in ("string_too_long", "too_long"):
+                return f"Der Name darf höchstens {MAX_LABEL} Zeichen haben."
+            return str(err["msg"]).removeprefix("Value error, ")
+    return "Diese Auswahl gibt es nicht. Bitte wähle aus den Optionen."
+
+
+def _figure_query(cfg: FigureConfig) -> str:
+    return urlencode(cfg.query())
+
+
+@router.get("/gestalten/figur")
+async def figure_page(
+    request: Request, session: OptionalSession, settings: SettingsDep
+) -> Response:
+    error: str | None = None
+    try:
+        cfg = FigureConfig.from_query(dict(request.query_params))
+    except ValidationError as exc:
+        cfg, error = FigureConfig(), _figure_message(exc)
+    context: dict[str, Any] = {
+        "cfg": cfg,
+        "query": _figure_query(cfg),
+        "defaults_json": json.dumps(FigureConfig().model_dump(mode="json"), separators=(",", ":")),
+        "suggested_json": json.dumps(
+            {shape: {"color_base": base, "color_accent": accent}
+             for shape, (base, accent) in FIGURE_SUGGESTED.items()},
+            separators=(",", ":"),
+        ),
+        "chosen": {"base": cfg.color_key("base"), "accent": cfg.color_key("accent")},
+        "shapes": FIGURE_SHAPES,
+        "shape_label": next(label for key, label, _ in FIGURE_SHAPES if key == cfg.shape),
+        "tops": FIGURE_TOPS,
+        "color_roles": FIGURE_COLOR_ROLES,
+        "palette": PALETTE,
+        "max_label": MAX_LABEL,
+        "error": error,
+        "docs_url": settings.docs_url.rstrip("/"),
+    }  # fmt: skip
+    return render(request, "figure_design.html", context, session=session,
+                  status_code=422 if error else 200)  # fmt: skip
+
+
+@router.get("/gestalten/figur/vorschau")
+async def figure_preview(request: Request, settings: SettingsDep) -> Response:
+    try:
+        cfg = FigureConfig.from_query(dict(request.query_params))
+    except ValidationError as exc:
+        return PlainTextResponse(_figure_message(exc), status_code=422)
+    etag = f'"{cfg.digest()}"'
+    headers = {"ETag": etag, "Cache-Control": "private, max-age=86400", "Vary": "Accept-Encoding"}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    builds: CaseBuilds = request.app.state.case_builds
+    if not builds.cached("figure_preview", cfg) and (
+        limited := await _count_build(request, settings)
+    ):
+        return limited
+    try:
+        data = await builds.figure_preview(cfg)
+    except FigureError as exc:
+        return PlainTextResponse(str(exc), status_code=422)
+    return Response(data, media_type="application/octet-stream",
+                    headers=headers | {"Content-Encoding": "gzip"})  # fmt: skip
+
+
+@router.get("/gestalten/figur/download.zip")
+async def figure_download(request: Request, settings: SettingsDep) -> Response:
+    try:
+        cfg = FigureConfig.from_query(dict(request.query_params))
+    except ValidationError as exc:
+        return PlainTextResponse(_figure_message(exc), status_code=422)
+    builds: CaseBuilds = request.app.state.case_builds
+    if not builds.cached("figure_bundle", cfg) and (
+        limited := await _count_build(request, settings)
+    ):
+        return limited
+    base = settings.base_url.rstrip("/")
+    query = _figure_query(cfg)
+    url = f"{base}/gestalten/figur" + (f"?{query}" if query else "")
+    try:
+        data = await builds.figure_bundle(cfg, url)
+    except FigureError as exc:
+        return PlainTextResponse(str(exc), status_code=422)
+    return Response(
+        data,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{figure_stem(cfg)}.zip"',
             "Cache-Control": "private, max-age=86400",
         },
     )

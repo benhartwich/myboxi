@@ -2,6 +2,7 @@
 
 Options are given as key=value, the same keys as in the configurator URL, e.g.
     myboxi-case build form=bear name=Mia color_body=braun --out mia.zip
+    myboxi-case figure shape=heart top=bricks name=Mia --out mia-figur.zip   (or .png)
 """
 
 from __future__ import annotations
@@ -50,8 +51,13 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("check", help="run the checks (all supported combinations with --all)")
     p.add_argument("options", nargs="*")
     p.add_argument("--all", action="store_true")
+    p = sub.add_parser("figure", help="a figure base: ZIP (print files) or PNG, by --out suffix")
+    p.add_argument("options", nargs="*")
+    p.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
+    if args.command == "figure":
+        return _figure(args.options, args.out)
     if args.command == "check" and args.all:
         return _check_all()
     cfg = _config(args.options)
@@ -72,6 +78,25 @@ def main(argv: list[str] | None = None) -> int:
             for issue in issues:
                 print(issue)
             return 1 if issues else 0
+    return 0
+
+
+def _figure(pairs: list[str], out: Path) -> int:
+    from myboxi_case import figures
+
+    query: dict[str, str] = {}
+    for pair in pairs:
+        key, _, value = pair.partition("=")
+        query[key] = value
+    try:
+        model = figures.build_figure(figures.FigureConfig.from_query(query))
+    except (ValidationError, figures.FigureError) as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    if out.suffix == ".png":
+        out.write_bytes(figures.png(model))
+    else:
+        out.write_bytes(figures.bundle_zip(model))
     return 0
 
 
