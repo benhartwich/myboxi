@@ -9,11 +9,12 @@ import json
 from typing import Annotated, Any
 from urllib.parse import parse_qsl, urlencode
 
-from fastapi import APIRouter, Depends, Form, Request
+import anyio
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import PlainTextResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
-from myboxi_case import motifs
+from myboxi_case import motifs, trace
 from myboxi_case.config import MAX_NAME, PALETTE, ROLES, SUGGESTED, CaseConfig
 from myboxi_case.export import file_stem
 from myboxi_case.figures import MAX_LABEL, FigureConfig, FigureError
@@ -31,7 +32,7 @@ from myboxi_server.api.web.render import render
 from myboxi_server.auth import ratelimit
 from myboxi_server.auth.mail import log_mail
 from myboxi_server.auth.sessions import SessionInfo
-from myboxi_server.domain import case_requests
+from myboxi_server.domain import case_requests, drawings
 from myboxi_server.domain.case_builds import CaseBuilds
 from myboxi_server.domain.case_mails import confirm_mail, notify_mails
 from myboxi_server.domain.errors import DomainError, NotFoundError
@@ -224,7 +225,16 @@ def _figure_query(cfg: FigureConfig) -> str:
 async def figure_page(
     request: Request, session: OptionalSession, settings: SettingsDep
 ) -> Response:
-    error: str | None = None
+    return _figure_page(request, session, settings)
+
+
+def _figure_page(
+    request: Request,
+    session: SessionInfo | None,
+    settings: Settings,
+    upload_error: str | None = None,
+) -> Response:
+    error: str | None = upload_error
     try:
         cfg = FigureConfig.from_query(dict(request.query_params))
     except ValidationError as exc:
@@ -242,7 +252,9 @@ async def figure_page(
         "chosen": {role: cfg.color_key(role) for role in ("base", "accent", "motif", "details")},
         "shapes": FIGURE_SHAPES,
         "shape_label": next(label for key, label, _ in FIGURE_SHAPES if key == cfg.shape),
-        "motifs": [(m, motifs.LABELS[m]) for m in motifs.MOTIFS],
+        "motifs": [
+            *((m, motifs.LABELS[m]) for m in motifs.MOTIFS), ("drawing", "Eigene Zeichnung")
+        ],
         "tops": FIGURE_TOPS,
         "color_roles": FIGURE_COLOR_ROLES,
         "palette": PALETTE,
@@ -250,6 +262,10 @@ async def figure_page(
         "error": error,
         "docs_url": settings.docs_url.rstrip("/"),
     }  # fmt: skip
+    drawing_gone = cfg.motif == "drawing" and cfg.drawing is not None
+    if drawing_gone and not error and drawings.load(settings.data_dir, cfg.drawing) is None:
+        error = DRAWING_GONE
+        context["error"] = error
     return render(request, "figure_design.html", context, session=session,
                   status_code=422 if error else 200)  # fmt: skip
 
@@ -269,8 +285,11 @@ async def figure_preview(request: Request, settings: SettingsDep) -> Response:
         limited := await _count_build(request, settings)
     ):
         return limited
+    strokes = drawings.load(settings.data_dir, cfg.drawing) if cfg.motif == "drawing" else None
+    if cfg.motif == "drawing" and cfg.drawing is not None and strokes is None:
+        return PlainTextResponse(DRAWING_GONE, status_code=422)
     try:
-        data = await builds.figure_preview(cfg)
+        data = await builds.figure_preview(cfg, strokes)
     except FigureError as exc:
         return PlainTextResponse(str(exc), status_code=422)
     return Response(data, media_type="application/octet-stream",
@@ -291,8 +310,11 @@ async def figure_download(request: Request, settings: SettingsDep) -> Response:
     base = settings.base_url.rstrip("/")
     query = _figure_query(cfg)
     url = f"{base}/gestalten/figur" + (f"?{query}" if query else "")
+    strokes = drawings.load(settings.data_dir, cfg.drawing) if cfg.motif == "drawing" else None
+    if cfg.motif == "drawing" and cfg.drawing is not None and strokes is None:
+        return PlainTextResponse(DRAWING_GONE, status_code=422)
     try:
-        data = await builds.figure_bundle(cfg, url)
+        data = await builds.figure_bundle(cfg, url, strokes)
     except FigureError as exc:
         return PlainTextResponse(str(exc), status_code=422)
     return Response(
@@ -303,6 +325,50 @@ async def figure_download(request: Request, settings: SettingsDep) -> Response:
             "Cache-Control": "private, max-age=86400",
         },
     )
+
+
+DRAWING_GONE = (
+    "Die Zeichnung ist nicht mehr gespeichert (nach 7 Tagen). Bitte noch einmal hochladen."
+)
+
+
+@router.post("/gestalten/figur/zeichnung")
+async def figure_drawing(
+    request: Request,
+    session: OptionalSession,
+    settings: SettingsDep,
+    file: Annotated[UploadFile, File()],
+    query: Annotated[str, Form(max_length=2000)] = "",
+) -> Response:
+    """A photo of a drawing: decoded and traced in memory, only the strokes are kept (7 days).
+    Then back to the page with the new drawing chosen."""
+    params = dict(parse_qsl(query))
+    params |= {"top": "standee", "motif": "drawing"}
+    params.pop("drawing", None)
+    params.pop("turn", None)
+
+    async def page_with(error: str) -> Response:
+        request.scope["query_string"] = urlencode(params).encode()
+        return _figure_page(request, session, settings, upload_error=error)
+
+    try:
+        await ratelimit.hit(
+            request.app.state.engine,
+            f"drawing:ip:{client_ip(request, settings)}",
+            ratelimit.DRAWING_PER_IP,
+        )
+    except ratelimit.RateLimitedError:
+        return await page_with("Zu viele Zeichnungen in kurzer Zeit. Bitte später noch einmal.")
+    data = await file.read(drawings.MAX_BYTES + 1)
+    if len(data) > drawings.MAX_BYTES:
+        return await page_with("Das Foto ist zu groß (höchstens 16 MB).")
+    try:
+        gray = await anyio.to_thread.run_sync(drawings.decode, data, settings.ffmpeg_path)
+        strokes = await anyio.to_thread.run_sync(trace.ink, gray)
+    except (drawings.DrawingError, trace.TraceError) as exc:
+        return await page_with(str(exc))
+    params["drawing"] = drawings.store(settings.data_dir, strokes)
+    return RedirectResponse(f"/gestalten/figur?{urlencode(params)}", status_code=303)
 
 
 # --- order requests (off unless order_notify_email is set) -------------------------------------

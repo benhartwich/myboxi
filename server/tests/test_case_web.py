@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import io
 import re
+import struct
+import time
 import zipfile
+import zlib
+from urllib.parse import parse_qsl
 
 import httpx
+import numpy as np
 import pytest
 from fastapi import FastAPI
 
@@ -14,6 +19,8 @@ from myboxi_case.config import CaseConfig
 from myboxi_case.export import read_preview
 from myboxi_server.auth import ratelimit
 from myboxi_server.auth.ratelimit import Limit
+from myboxi_server.domain import drawings
+from myboxi_server.settings import Settings
 
 from .helpers import login, make_tenant
 
@@ -194,3 +201,83 @@ async def test_figure_from_the_collection(client: httpx.AsyncClient) -> None:
     r = await client.get("/gestalten/figur/download.zip?top=standee&motif=frog&name=Ida")
     names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
     assert "stl/myboxi-figur-frog-ida-figur.stl" in names
+
+
+def _png(gray: np.ndarray) -> bytes:
+    """A grey PNG, enough for the upload (no extra dependency)."""
+    h, w = gray.shape
+    raw = b"".join(b"\x00" + gray[row].tobytes() for row in range(h))
+
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    header = struct.pack(">IIBBBBB", w, h, 8, 0, 0, 0, 0)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", header)
+        + chunk(b"IDAT", zlib.compress(raw))
+        + (chunk(b"IEND", b""))
+    )
+
+
+async def _csrf(client: httpx.AsyncClient) -> str:
+    page = await client.get("/gestalten/figur?top=standee&motif=drawing")
+    m = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
+    assert m is not None
+    return m.group(1)
+
+
+async def test_a_drawing_becomes_a_figure(client: httpx.AsyncClient, settings: Settings) -> None:
+    from myboxi_case.trace import SIZE
+
+    yy, xx = np.mgrid[0:SIZE, 0:SIZE]
+    gray = np.full((SIZE, SIZE), 230, dtype=np.uint8)
+    gray[np.abs(np.hypot(xx - 200, yy - 150) - 60) < 3] = 30  # a face …
+    gray[(np.hypot(xx - 180, yy - 140) < 7) | (np.hypot(xx - 220, yy - 140) < 7)] = 30
+    gray[210:330, 197:203] = 30  # … on a body
+    csrf = await _csrf(client)
+    r = await client.post(
+        "/gestalten/figur/zeichnung",
+        data={"csrf_token": csrf, "query": "shape=heart&name=Ida"},
+        files={"file": ("zeichnung.png", _png(gray), "image/png")},
+    )
+    assert r.status_code == 303, r.text
+    location = r.headers["location"]
+    assert location.startswith("/gestalten/figur?")
+    query = dict(parse_qsl(location.split("?", 1)[1]))
+    assert query["shape"] == "heart"  # the other choices stay
+    assert query["name"] == "Ida"
+    assert query["motif"] == "drawing"
+    drawing_id = query["drawing"]
+    stored = settings.data_dir / "drawings" / f"{drawing_id}.json"
+    assert stored.exists()  # only the strokes …
+    assert b"PNG" not in stored.read_bytes()  # … never the photo
+    page = await client.get(location)
+    assert 'name="turn"' in page.text
+    preview = await client.get(location.replace("/gestalten/figur?", "/gestalten/figur/vorschau?"))
+    assert preview.status_code == 200
+    archive = await client.get(
+        location.replace("/gestalten/figur?", "/gestalten/figur/download.zip?")
+    )
+    assert archive.status_code == 200
+    # after 7 days the strokes are gone, and the page says so
+    assert drawings.purge(settings.data_dir, now=time.time() + 8 * 86400) >= 1
+    gone = await client.get(location.replace("/gestalten/figur?", "/gestalten/figur/vorschau?"))
+    assert gone.status_code == 422
+    assert "nicht mehr gespeichert" in gone.text
+
+
+async def test_only_photos_are_accepted(client: httpx.AsyncClient) -> None:
+    csrf = await _csrf(client)
+    for name, data in (
+        ("a.gif", b"GIF89a" + b"\0" * 100),
+        ("leer.png", _png(np.full((64, 64), 230, dtype=np.uint8))),
+    ):
+        r = await client.post(
+            "/gestalten/figur/zeichnung",
+            data={"csrf_token": csrf},
+            files={"file": (name, data, "application/octet-stream")},
+        )
+        assert r.status_code == 422
+        assert "JPEG, PNG oder WebP" in r.text or "keine Zeichnung" in r.text
