@@ -27,7 +27,7 @@
 
   <form class="case-form" method="get" action="/gestalten/figur" id="case-form"
         data-defaults="{{ defaults_json }}" data-suggested="{{ suggested_json }}"
-        data-page="/gestalten/figur" data-download="/gestalten/figur/download.zip"
+        data-page="/gestalten/figur" data-download="/gestalten/figur/druckdateien.zip"
         data-suggest-by="shape,motif" data-reframe="size,top">
     <fieldset class="field">
       <legend>Was kommt auf den Sockel?</legend>
@@ -150,7 +150,7 @@
 <section class="card case-result" aria-live="polite">
   <p class="msg error" id="case-error" {% if not error %}hidden{% endif %}>{{ error or '' }}</p>
   <div class="actions">
-    <a class="button" id="case-download" href="/gestalten/figur/download.zip{% if query %}?{{ query }}{% endif %}">{{ icon.download(20) }}Druckdateien laden</a>
+    <a class="button" id="case-download" href="/gestalten/figur/druckdateien.zip{% if query %}?{{ query }}{% endif %}">{{ icon.download(20) }}Druckdateien laden</a>
   </div>
   <p class="muted">ZIP mit fertigem Projekt für den Snapmaker U1 (deine Farben je Kopf und die Druckeinstellungen), 3MF für andere Slicer, STL und Anleitung. Die 3MF hält den Druck an der richtigen Stelle an: Chip einlegen, weiter. Druckdateien stehen unter CC BY-SA 4.0.</p>
   <p class="muted">Danach den Sockel auf die Box legen und die Figur in der App unter „Figuren“ übernehmen. Der Chip ist ganz eingeschlossen; Magnete braucht es nicht.</p>

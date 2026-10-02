@@ -165,6 +165,15 @@ async def case_preview(request: Request, settings: SettingsDep) -> Response:
     )
 
 
+# Downloads are never cached by the browser: the files change with the generator while the
+# address stays the same (the server keeps built files in memory, case_builds). The old
+# addresses stay for links already sent; browsers may hold those for a day.
+CASE_ZIP = "/gestalten/druckdateien.zip"
+FIGURE_ZIP = "/gestalten/figur/druckdateien.zip"
+NO_STORE = "no-store"
+
+
+@router.get(CASE_ZIP)
 @router.get("/gestalten/download.zip")
 async def case_download(request: Request, settings: SettingsDep) -> Response:
     try:
@@ -183,7 +192,7 @@ async def case_download(request: Request, settings: SettingsDep) -> Response:
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{file_stem(cfg)}.zip"',
-            "Cache-Control": "private, max-age=86400",
+            "Cache-Control": NO_STORE,
         },
     )
 
@@ -318,6 +327,7 @@ async def figure_preview(request: Request, settings: SettingsDep) -> Response:
                     headers=headers | {"Content-Encoding": "gzip"})  # fmt: skip
 
 
+@router.get(FIGURE_ZIP)
 @router.get("/gestalten/figur/download.zip")
 async def figure_download(request: Request, settings: SettingsDep) -> Response:
     try:
@@ -344,7 +354,7 @@ async def figure_download(request: Request, settings: SettingsDep) -> Response:
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{figure_stem(cfg)}.zip"',
-            "Cache-Control": "private, max-age=86400",
+            "Cache-Control": NO_STORE,
         },
     )
 

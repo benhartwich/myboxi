@@ -42,7 +42,7 @@ def notify_mails(settings: Settings, req: CaseRequest) -> list[Mail]:
             req.email,
             lines,
             f"{_base(settings)}/gestalten{suffix}",
-            f"{_base(settings)}/gestalten/download.zip{suffix}",
+            f"{_base(settings)}/gestalten/druckdateien.zip{suffix}",
         ),
         case_receipt_mail(req.email, req.contact_name),
     ]

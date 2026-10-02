@@ -110,7 +110,7 @@ async def test_request_with_double_opt_in(
     assert notify.reply_to == "anna@example.org"
     assert "Bär" in notify.body
     assert "Bitte in Braun." in notify.body
-    assert "/gestalten/download.zip?form=bear&name=Mia" in notify.body
+    assert "/gestalten/druckdateien.zip?form=bear&name=Mia" in notify.body
     assert receipt.to == "anna@example.org"
 
     again = await client.post(
