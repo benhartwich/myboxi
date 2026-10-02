@@ -120,7 +120,7 @@
 <section class="card case-result" aria-live="polite">
   <p class="msg error" id="case-error" {% if not layout_error %}hidden{% endif %}>{{ layout_error or '' }}</p>
   <div class="actions">
-    <a class="button" id="case-download" href="/gestalten/download.zip{% if query %}?{{ query }}{% endif %}" {% if layout_error %}aria-disabled="true"{% endif %}>{{ icon.download(20) }}Druckdateien laden</a>
+    <a class="button" id="case-download" href="/gestalten/druckdateien.zip{% if query %}?{{ query }}{% endif %}" {% if layout_error %}aria-disabled="true"{% endif %}>{{ icon.download(20) }}Druckdateien laden</a>
     {% if orders %}
     <a class="button secondary" id="case-order" href="/gestalten/anfrage{% if query %}?{{ query }}{% endif %}">Gedruckt bestellen</a>
     {% endif %}

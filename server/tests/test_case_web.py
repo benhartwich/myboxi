@@ -32,7 +32,9 @@ async def test_page_is_public_and_keeps_the_choices(client: httpx.AsyncClient) -
     assert 'value="Mia"' in r.text
     assert 'name="form" value="bear" checked' in r.text
     assert 'name="color_body" value="braun" checked' in r.text
-    assert 'href="/gestalten/download.zip?form=bear&amp;name=Mia&amp;color_body=braun"' in r.text
+    assert (
+        'href="/gestalten/druckdateien.zip?form=bear&amp;name=Mia&amp;color_body=braun"' in r.text
+    )
     script = re.search(r'<script type="module" src="(/static/case\.js\?v=[0-9a-f]{10})">', r.text)
     assert script
     assert "default-src 'self'" in r.headers["content-security-policy"]
@@ -95,12 +97,19 @@ async def test_preview_refuses_bad_input(client: httpx.AsyncClient) -> None:
 
 
 async def test_download_zip(client: httpx.AsyncClient) -> None:
-    r = await client.get("/gestalten/download.zip?form=bear&name=Mäxi")
+    r = await client.get("/gestalten/druckdateien.zip?form=bear&name=Mäxi")
     assert r.status_code == 200
     assert r.headers["content-type"] == "application/zip"
     assert r.headers["content-disposition"] == 'attachment; filename="myboxi-bear-maexi.zip"'
+    # never from the browser's cache: the files change with the generator, the address not
+    assert r.headers["cache-control"] == "no-store"
     names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
     assert "myboxi-bear-maexi.3mf" in names
+    assert "snapmaker-u1/myboxi-bear-maexi.3mf" in names  # the colours for the U1
+    # links already sent keep working
+    old = await client.get("/gestalten/download.zip?form=bear&name=Mäxi")
+    assert old.status_code == 200
+    assert old.headers["cache-control"] == "no-store"
     readme = zipfile.ZipFile(io.BytesIO(r.content)).read("LIESMICH.txt").decode()
     assert "/gestalten?form=bear&name=M%C3%A4xi" in readme
 
@@ -145,7 +154,7 @@ async def test_figure_page_is_public_and_keeps_the_choices(client: httpx.AsyncCl
     assert 'name="top" value="bricks" checked' in r.text
     assert 'value="Mia"' in r.text
     assert 'data-page="/gestalten/figur"' in r.text
-    assert "/gestalten/figur/download.zip?shape=heart&amp;top=bricks&amp;name=Mia" in r.text
+    assert "/gestalten/figur/druckdateien.zip?shape=heart&amp;top=bricks&amp;name=Mia" in r.text
     assert "/static/figure/heart.png?v=" in r.text
     bad = await client.get("/gestalten/figur?shape=dragon")
     assert bad.status_code == 422
@@ -295,7 +304,8 @@ async def test_a_round_figure_in_one_piece(client: httpx.AsyncClient) -> None:
     info, _ = read_preview(r.content)
     keys = [m["key"] for m in info["meshes"]]  # type: ignore[index]
     assert keys == ["figure", "figure_inlay", "figure3d", "figure3d_accent", "figure3d_details"]
-    r = await client.get("/gestalten/figur/download.zip?motif=unicorn&name=Ida")
+    r = await client.get("/gestalten/figur/druckdateien.zip?motif=unicorn&name=Ida")
+    assert r.headers["cache-control"] == "no-store"
     archive = zipfile.ZipFile(io.BytesIO(r.content))
     assert "myboxi-figur-unicorn-ida.3mf" in archive.namelist()
     assert "Kopf 2: Name und Akzente – Rosa" in archive.read("LIESMICH.txt").decode()

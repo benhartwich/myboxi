@@ -16,7 +16,7 @@ const order = document.getElementById('case-order');
 const defaults = JSON.parse(form.dataset.defaults);
 const suggested = JSON.parse(form.dataset.suggested);
 const pagePath = form.dataset.page || '/gestalten';
-const downloadPath = form.dataset.download || '/gestalten/download.zip';
+const downloadPath = form.dataset.download || '/gestalten/druckdateien.zip';
 // Fields whose value picks suggested colours (e.g. the form, a figure's motif).
 const suggestBy = new Set((form.dataset.suggestBy || 'form').split(','));
 const reframeOn = new Set([...suggestBy, ...(form.dataset.reframe || '').split(',').filter(Boolean)]);
