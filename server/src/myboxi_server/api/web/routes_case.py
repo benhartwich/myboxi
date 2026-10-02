@@ -6,12 +6,14 @@ Outside the device protocol (SPEC scope). No login needed; the configuration liv
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from typing import Annotated, Any
 from urllib.parse import parse_qsl, urlencode
 
 import anyio
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import PlainTextResponse, RedirectResponse, Response
+from markupsafe import Markup, escape
 from pydantic import ValidationError
 
 from myboxi_case import motifs, trace
@@ -196,16 +198,18 @@ FIGURE_SHAPES = (
 )
 # key, label, text, picture
 FIGURE_TOPS = (
-    ("standee", "Figur", "Aus unserer Sammlung oder eure eigene Zeichnung.", "motif-bear"),
+    ("figure", "3D-Figur", "Rund, aus einem Stück mit dem Sockel gedruckt.", "motif3d-bear"),
+    ("standee", "Aufsteller", "Flach zum Einstecken, auch nach einer Kinderzeichnung.",
+     "motif-bear"),
     ("flat", "Flach", "Eine eigene Figur daraufkleben, z. B. ein Spieltier.", "round"),
     ("bricks", "Noppen", "Klemmbausteine aufstecken, z. B. eine Minifigur.", "top-bricks"),
-)
-# field, role, label, only for a figure from the collection
+)  # fmt: skip
+# field, role, label, shown when (data-show-when)
 FIGURE_COLOR_ROLES = (
-    ("color_base", "base", "Sockel", False),
-    ("color_accent", "accent", "Name", False),
-    ("color_motif", "motif", "Figur", True),
-    ("color_details", "details", "Gesicht", True),
+    ("color_base", "base", "Sockel", None),
+    ("color_accent", "accent", "Name", None),
+    ("color_motif", "motif", "Figur", "top=figure|standee"),
+    ("color_details", "details", "Gesicht", "top=figure|standee"),
 )
 
 
@@ -215,7 +219,21 @@ def _figure_message(exc: ValidationError) -> str:
             if err["type"] in ("string_too_long", "too_long"):
                 return f"Der Name darf höchstens {MAX_LABEL} Zeichen haben."
             return str(err["msg"]).removeprefix("Value error, ")
+        if not err["loc"] and err["type"] == "value_error":  # a combination, e.g. a drawing
+            return str(err["msg"]).removeprefix("Value error, ")
     return "Diese Auswahl gibt es nicht. Bitte wähle aus den Optionen."
+
+
+def _shown(cfg: FigureConfig) -> Callable[[str], Markup]:
+    """``data-show-when="top=figure|standee"`` for case.js, hidden already when it does not
+    apply, so the page is right without JavaScript."""
+
+    def show(rule: str) -> Markup:
+        key, values = rule.split("=", 1)
+        hidden = "" if str(getattr(cfg, key)) in values.split("|") else " hidden"
+        return Markup(f'data-show-when="{escape(rule)}"{hidden}')  # noqa: S704 - escaped
+
+    return show
 
 
 def _figure_query(cfg: FigureConfig) -> str:
@@ -247,7 +265,9 @@ def _figure_page(
         "suggested_json": json.dumps(
             {shape: {"color_base": base, "color_accent": accent}
              for shape, (base, accent) in FIGURE_SUGGESTED.items()}
-            | {motif: {"color_motif": colour} for motif, colour in motifs.COLOURS.items()},
+            | {motif: {"color_motif": colour} | (
+                {"color_accent": motifs.ACCENTS[motif]} if motif in motifs.ACCENTS else {})
+               for motif, colour in motifs.COLOURS.items()},
             separators=(",", ":"),
         ),
         "chosen": {role: cfg.color_key(role) for role in ("base", "accent", "motif", "details")},
@@ -257,6 +277,7 @@ def _figure_page(
             *((m, motifs.LABELS[m]) for m in motifs.MOTIFS), ("drawing", "Eigene Zeichnung")
         ],
         "tops": FIGURE_TOPS,
+        "show": _shown(cfg),
         "color_roles": FIGURE_COLOR_ROLES,
         "palette": PALETTE,
         "max_label": MAX_LABEL,

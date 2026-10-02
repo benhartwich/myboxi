@@ -299,7 +299,7 @@ button.toggle[aria-pressed="true"] { background: var(--moss); color: var(--paper
 .form-card { position: relative; display: grid; gap: 4px; align-content: start; padding: 10px; border-radius: var(--radius); background: var(--paper);
              border: 2px solid var(--line); cursor: pointer; font-size: 14px; }
 .form-card img { width: 100%; height: auto; border-radius: var(--radius-s); background: var(--cream); }
-.form-card .muted { font-size: 13px; line-height: 1.35; }
+.form-card .muted { font-size: 13px; line-height: 1.35; hyphens: auto; overflow-wrap: break-word; }
 .form-card:has(input:checked) { border-color: var(--moss); background: var(--moss-soft); }
 .form-card input, .swatch input, .choice input { position: absolute; opacity: 0; pointer-events: none; }
 .form-card:has(input:focus-visible), .swatch:has(input:focus-visible), .choice:has(input:focus-visible) { outline: 3px solid var(--mint); outline-offset: 2px; }

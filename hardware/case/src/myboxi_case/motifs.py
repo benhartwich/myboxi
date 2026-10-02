@@ -36,6 +36,15 @@ COLOURS: dict[str, str] = {
     "person": "himmel",
     "drawing": "creme",  # light, so the strokes show
 }
+# Suggested accent per motif (the name, and on a round figure belly, snout, ears, horn).
+ACCENTS: dict[str, str] = {
+    "bear": "creme",
+    "cat": "creme",
+    "bunny": "weiss",
+    "frog": "sonne",
+    "unicorn": "rosa",
+    "person": "braun",
+}
 
 
 @dataclass(frozen=True)
