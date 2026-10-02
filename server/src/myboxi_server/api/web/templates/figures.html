@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Figuren · Myboxi{% endblock %}
+{% block head %}<script type="module" src="{{ asset('nfc-scan.js') }}"></script>{% endblock %}
 {% block content %}
 <h1>Figuren</h1>
 
@@ -46,12 +47,14 @@
 {% if ctx.can(Perm.TOKEN_WRITE) %}
 <section class="card">
   <h2>Figur anlegen</h2>
-  <p class="muted">Einfacher: Figur auf die Box legen und oben übernehmen. Hier nur, wenn du die UID kennst.</p>
+  <p class="muted">Einfacher: Figur auf die Box legen und oben übernehmen. Hier, wenn du die UID kennst: aus einer NFC-App am Handy, oder auf Android mit Chrome direkt per „Mit dem Handy scannen“.</p>
   <form method="post" action="/t/{{ tid }}/figures" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label>UID (vom NFC-Tag)
-      <input name="uid" value="{{ form.uid or '' }}" placeholder="04A2B3C4D5E680" autocapitalize="characters" required>
+      <input id="uid-input" name="uid" value="{{ form.uid or '' }}" placeholder="04A2B3C4D5E680" autocapitalize="characters" required>
     </label>
+    <button type="button" class="small secondary" id="nfc-scan" data-target="uid-input" hidden>Mit dem Handy scannen</button>
+    <p class="muted" id="nfc-status" role="status" hidden></p>
     <label>Name <input name="label" value="{{ form.label or '' }}" maxlength="100" placeholder="Drache Fridolin" required></label>
     <button type="submit">Anlegen</button>
   </form>

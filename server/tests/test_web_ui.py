@@ -233,6 +233,19 @@ async def test_figure_uid_is_normalized_and_unique(ui: Ui) -> None:
     assert "gibt es schon" in r.text
 
 
+async def test_figures_can_be_scanned_with_a_phone(ui: Ui) -> None:
+    """Web NFC (Android, Chrome): the button fills the UID field; hidden elsewhere."""
+    page = await ui.client.get(f"/t/{ui.tid}/figures")
+    assert 'id="nfc-scan" data-target="uid-input" hidden' in page.text
+    assert 'id="uid-input"' in page.text
+    assert "/static/nfc-scan.js?v=" in page.text
+    # a serial number as Chrome reports it is accepted as is
+    r = await ui.post("/figures", uid="04:a2:b3:c4:d5:e6:80", label="Gescannt")
+    assert r.status_code in (200, 303)
+    async with sessionmaker_of(ui.app)() as db:
+        assert await db.scalar(select(Token.id).where(Token.uid == "04A2B3C4D5E680"))
+
+
 async def test_unknown_figures_are_listed_and_adopted(ui: Ui) -> None:
     dev = await pair_device(ui.app, ui.client, ui.tid)
     events = [
