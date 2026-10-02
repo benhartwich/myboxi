@@ -1,4 +1,5 @@
-// Box gestalten: live 3D preview of the configured case (docs/gehaeuse.md).
+// Box gestalten and Figur gestalten: live 3D preview of the configuration (docs/gehaeuse.md).
+// The form's data attributes say where the page, the download and the preview live.
 // The server builds the meshes (hardware/case); this only draws them. Without WebGL the page
 // keeps working: the form, the example image and the download.
 import * as THREE from './vendor/three-0.186.1/three.module.js';
@@ -14,6 +15,10 @@ const download = document.getElementById('case-download');
 const order = document.getElementById('case-order');
 const defaults = JSON.parse(form.dataset.defaults);
 const suggested = JSON.parse(form.dataset.suggested);
+const pagePath = form.dataset.page || '/gestalten';
+const downloadPath = form.dataset.download || '/gestalten/download.zip';
+const suggestBy = form.dataset.suggestBy || 'form';  // the field whose value picks the colours
+const reframeOn = new Set([suggestBy, ...(form.dataset.reframe || '').split(',').filter(Boolean)]);
 let coloursChosen = [...new URLSearchParams(location.search).keys()].some((k) => k.startsWith('color_'));
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -155,6 +160,7 @@ function frameCamera(size) {
   const radius = Math.hypot(w, d, h) / 2;
   controls.target.set(0, h / 2, 0);
   const distance = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov / 2)) * 1.05;
+  controls.minDistance = Math.min(150, radius * 1.6);  // small figure bases come closer
   camera.position.set(distance * 0.55, h / 2 + distance * 0.42, distance * 0.72);
   baseDistance = camera.position.distanceTo(controls.target);
   controls.update();
@@ -218,8 +224,8 @@ let timer = 0;
 async function refresh() {
   const q = query();
   const suffix = q ? `?${q}` : '';
-  history.replaceState(null, '', `/gestalten${suffix}`);
-  download.href = `/gestalten/download.zip${suffix}`;
+  history.replaceState(null, '', `${pagePath}${suffix}`);
+  download.href = `${downloadPath}${suffix}`;
   if (order) order.href = `/gestalten/anfrage${suffix}`;
   if (!renderer) return;
   pending?.abort();
@@ -254,10 +260,8 @@ function suggestColours(shape) {
 form.addEventListener('input', (event) => {
   const name = event.target.name;
   if (name.startsWith('color_')) coloursChosen = true;
-  if (name === 'form') {
-    framed = false;
-    if (!coloursChosen) suggestColours(event.target.value);
-  }
+  if (reframeOn.has(name)) framed = false;
+  if (name === suggestBy && !coloursChosen) suggestColours(event.target.value);
   window.clearTimeout(timer);
   timer = window.setTimeout(refresh, event.target.name === 'name' ? 450 : 120);
 });

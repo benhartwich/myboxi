@@ -126,3 +126,52 @@ async def test_static_files_are_versioned(client: httpx.AsyncClient) -> None:
 async def test_public_header_links_to_the_configurator(client: httpx.AsyncClient) -> None:
     r = await client.get("/login")
     assert 'href="/gestalten"' in r.text
+
+
+# --- Figur gestalten --------------------------------------------------------------------------
+
+
+async def test_figure_page_is_public_and_keeps_the_choices(client: httpx.AsyncClient) -> None:
+    r = await client.get("/gestalten/figur?shape=heart&top=bricks&name=Mia")
+    assert r.status_code == 200
+    assert 'name="shape" value="heart" checked' in r.text
+    assert 'name="top" value="bricks" checked' in r.text
+    assert 'value="Mia"' in r.text
+    assert 'data-page="/gestalten/figur"' in r.text
+    assert "/gestalten/figur/download.zip?shape=heart&amp;top=bricks&amp;name=Mia" in r.text
+    assert "/static/figure/heart.png?v=" in r.text
+    bad = await client.get("/gestalten/figur?shape=dragon")
+    assert bad.status_code == 422
+    assert "Diese Auswahl gibt es nicht" in bad.text
+
+
+async def test_figure_preview_and_download(client: httpx.AsyncClient) -> None:
+    r = await client.get("/gestalten/figur/vorschau?shape=star&top=bricks")
+    assert r.status_code == 200
+    assert r.headers["content-encoding"] == "gzip"
+    info, meshes = read_preview(r.content)
+    assert info["version"] == "figure 1"
+    assert len(meshes) == 1
+    r = await client.get("/gestalten/figur/download.zip?shape=round&name=Lotta")
+    assert r.status_code == 200
+    assert r.headers["content-disposition"] == (
+        'attachment; filename="myboxi-figur-round-lotta.zip"'
+    )
+    archive = zipfile.ZipFile(io.BytesIO(r.content))
+    assert "myboxi-figur-round-lotta.3mf" in archive.namelist()
+    readme = archive.read("LIESMICH.txt").decode()
+    assert "Druckpause bei 2,2 mm" in readme
+    assert "/gestalten/figur?name=Lotta" in readme
+    too_long = await client.get("/gestalten/figur/vorschau?name=Maximiliane")
+    assert too_long.status_code == 422
+    assert "höchstens 10 Zeichen" in too_long.text
+
+
+async def test_figures_and_boxes_link_to_the_figure_designer(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    assert 'href="/gestalten/figur"' in (await client.get("/gestalten")).text
+    t = await make_tenant(app)
+    await login(client, t.owner_email)
+    assert 'href="/gestalten/figur"' in (await client.get(f"/t/{t.tenant_id}/figures")).text
+    assert 'href="/gestalten/figur"' in (await client.get(f"/t/{t.tenant_id}/boxes")).text

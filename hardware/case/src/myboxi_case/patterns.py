@@ -45,7 +45,7 @@ def star(r_out: float, r_in: float) -> CrossSection:
     return polygon(points)
 
 
-def _heart(width: float) -> CrossSection:
+def heart(width: float) -> CrossSection:
     r = width / 4
     tip = circle(0.3, 0, -width * 0.62)
     left = CrossSection.batch_hull([circle(r, -r, 0), tip])
@@ -79,7 +79,7 @@ def grille(kind: Grille, radius: float) -> CrossSection:
         case "stars":
             return _hex_grid(radius, 7.3, star(3.4, 2.0), 3.4)
         case "hearts":
-            return _hex_grid(radius, 7.6, _heart(6.8), 3.7)
+            return _hex_grid(radius, 7.6, heart(6.8), 3.7)
         case "lines":
             slots: list[CrossSection] = []
             pitch = 5.5

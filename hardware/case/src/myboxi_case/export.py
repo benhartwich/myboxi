@@ -294,6 +294,16 @@ def preview(model: CaseModel, *, components: bool = True) -> bytes:
                     c.solid,
                 )
             )
+    size = (model.layout.width, model.layout.depth, model.layout.height)
+    return encode_preview(meshes, size, GENERATOR_VERSION)
+
+
+def encode_preview(
+    meshes: list[tuple[dict[str, object], Manifold]],
+    size: tuple[float, float, float],
+    version: str,
+) -> bytes:
+    """The preview format (see ``preview``) for any list of meshes; also used for figures."""
     blobs: list[bytes] = []
     header: list[dict[str, object]] = []
     for meta, solid in meshes:
@@ -305,9 +315,9 @@ def preview(model: CaseModel, *, components: bool = True) -> bytes:
         header.append(meta | {"vertices": len(verts), "triangles": len(tris)})
         blobs += [pos, idx]
     info = {
-        "version": GENERATOR_VERSION,
+        "version": version,
         "step": PREVIEW_STEP,
-        "size": [model.layout.width, model.layout.depth, model.layout.height],
+        "size": list(size),
         "meshes": header,
     }
     head = json.dumps(info, separators=(",", ":"), ensure_ascii=False).encode()

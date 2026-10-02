@@ -13,23 +13,25 @@ from typing import Literal
 
 import anyio
 
-from myboxi_case import export
+from myboxi_case import export, figures
 from myboxi_case.build import build
 from myboxi_case.config import CaseConfig
+from myboxi_case.figures import FigureConfig, FigureError, build_figure
 from myboxi_case.layout import LayoutError
 
-Kind = Literal["preview", "bundle"]
+Kind = Literal["preview", "bundle", "figure_preview", "figure_bundle"]
 Make = Callable[[], bytes]
+BuildError = LayoutError | FigureError
 
 
 class CaseBuilds:
     def __init__(self, cache_bytes: int, concurrency: int = 2) -> None:
         self.cache_bytes = cache_bytes
-        self._cache: OrderedDict[tuple[Kind, str], bytes | LayoutError] = OrderedDict()
+        self._cache: OrderedDict[tuple[Kind, str], bytes | BuildError] = OrderedDict()
         self._size = 0
         self._limiter = anyio.CapacityLimiter(concurrency)
 
-    def cached(self, kind: Kind, cfg: CaseConfig) -> bool:
+    def cached(self, kind: Kind, cfg: CaseConfig | FigureConfig) -> bool:
         return (kind, cfg.digest()) in self._cache
 
     async def preview(self, cfg: CaseConfig) -> bytes:
@@ -42,22 +44,36 @@ class CaseBuilds:
         """The ZIP with 3MF, STL and instructions; raises LayoutError."""
         return await self._get("bundle", cfg, lambda: export.bundle_zip(build(cfg), url))
 
-    async def _get(self, kind: Kind, cfg: CaseConfig, make: Make) -> bytes:
+    async def figure_preview(self, cfg: FigureConfig) -> bytes:
+        """ "Figur gestalten": the gzip-compressed preview mesh; raises FigureError."""
+        return await self._get(
+            "figure_preview",
+            cfg,
+            lambda: gzip.compress(figures.preview(build_figure(cfg)), 6, mtime=0),
+        )
+
+    async def figure_bundle(self, cfg: FigureConfig, url: str) -> bytes:
+        """The ZIP with 3MF (print pause for the chip), STL and instructions."""
+        return await self._get(
+            "figure_bundle", cfg, lambda: figures.bundle_zip(build_figure(cfg), url)
+        )
+
+    async def _get(self, kind: Kind, cfg: CaseConfig | FigureConfig, make: Make) -> bytes:
         key = (kind, cfg.digest())
         hit = self._cache.get(key)
         if hit is None:
             try:
                 hit = await anyio.to_thread.run_sync(make, limiter=self._limiter)
-            except LayoutError as exc:
+            except (LayoutError, FigureError) as exc:
                 hit = exc
             self._store(key, hit)
         else:
             self._cache.move_to_end(key)
-        if isinstance(hit, LayoutError):
+        if isinstance(hit, (LayoutError, FigureError)):
             raise hit
         return hit
 
-    def _store(self, key: tuple[Kind, str], value: bytes | LayoutError) -> None:
+    def _store(self, key: tuple[Kind, str], value: bytes | BuildError) -> None:
         size = len(value) if isinstance(value, bytes) else 0
         if size > self.cache_bytes:
             return

@@ -128,6 +128,36 @@ Die 3MF-Dateien wurden mit Snapmaker Orca 2.4.0 und dem U1-Profil (0,20 mm Stand
 - Leseweite des NFC-Lesers durch den Deckel mit Figur und Sockel
 - Klang durch das Gitter
 
+## Figurensockel
+
+Unter **app.myboxi.eu/gestalten/figur** („Figur gestalten“) entsteht ein Sockel mit eingebautem NFC-Chip. Er macht jede Figur zur Box-Figur.
+
+**Auswahl:**
+- Form: rund, eckig, Herz oder Stern. Spitzen und Ecken sind abgerundet.
+- Größe: 40 oder 50 mm.
+- Oberseite:
+  - **Flach**, um eine vorhandene Figur daraufzukleben, etwa ein Spieltier. Am besten mit 2K-Kleber oder Sekundenkleber-Gel.
+  - **Noppen** für Klemmbausteine: Eine Minifigur oder etwas Gebautes steckt direkt darauf. Die Noppen sitzen im üblichen 8-mm-Raster, als rechteckiger Block. Wie fest sie halten, regelt „Spiel für die Noppen“: weniger Spiel heißt dickere Noppen und festeren Halt.
+- Name vorn auf dem Sockel, bis 10 Zeichen. Zweifarbig als Einlage, einfarbig graviert.
+- NFC-Chip: Münze oder Aufkleber, NTAG213 oder NTAG215, Ø 25 mm.
+
+**Drucken:**
+- Der Sockel liegt richtig herum auf der Platte und braucht keine Stützen.
+- Der Chip liegt 0,8 mm über der Unterseite, also nah am Leser der Box.
+- Seine Tasche ist rundum geschlossen. Die 3MF enthält deshalb eine **Druckpause** genau über der Tasche, bei der Münze 2,2 mm.
+  - Hält der Drucker an, den Chip flach einlegen und fortsetzen.
+  - Orca Slicer, Snapmaker Orca und Bambu Studio übernehmen die Pause aus der Datei. Geprüft mit dem Profil des Snapmaker U1: Die Pause kommt vor der ersten Schicht über der Tasche, ein- und zweifarbig.
+  - Mit den STL-Dateien setzt man die Pause im Slicer selbst.
+
+**Danach:** Den Sockel auf die Box legen. Die Figur erscheint in der App unter „Figuren → Unbekannte Figuren“ und lässt sich dort übernehmen. Wer die UID schon vorher braucht, scannt den Chip vor dem Einlegen in der App unter „Figuren“ mit dem Handy (Android mit Chrome).
+
+**Sicherheit:**
+- Jeder Sockel ist größer als der Kleinteile-Zylinder nach EN 71-1 (Ø 31,7 mm).
+- Der Chip ist ganz eingeschlossen; Magnete gibt es keine.
+- Eine aufgeklebte Figur muss fest sitzen und selbst für das Alter des Kindes geeignet sein.
+
+Von der Kommandozeile: `uv run myboxi-case figure shape=heart top=bricks name=Mia --out mia.zip` (oder `--out mia.png`).
+
 ## Anfragen für gedruckte Gehäuse
 
 Wer keinen Drucker hat, kann ein gedrucktes Gehäuse anfragen (ohne Elektronik). Die Funktion ist aus, bis `MYBOXI_SERVER_ORDER_NOTIFY_EMAIL` gesetzt ist (`docs/betrieb-debian13.md`).
