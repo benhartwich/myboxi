@@ -298,7 +298,8 @@ async def test_a_round_figure_in_one_piece(client: httpx.AsyncClient) -> None:
     r = await client.get("/gestalten/figur/download.zip?motif=unicorn&name=Ida")
     archive = zipfile.ZipFile(io.BytesIO(r.content))
     assert "myboxi-figur-unicorn-ida.3mf" in archive.namelist()
-    assert "Kopf 2 Name und Akzente" in archive.read("LIESMICH.txt").decode()
+    assert "Kopf 2: Name und Akzente – Rosa" in archive.read("LIESMICH.txt").decode()
+    assert "snapmaker-u1/myboxi-figur-unicorn-ida.3mf" in archive.namelist()
     # a drawing only stands flat
     r = await client.get("/gestalten/figur/vorschau?motif=drawing&drawing=0123456789abcdef")
     assert r.status_code == 422

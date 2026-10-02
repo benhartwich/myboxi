@@ -88,7 +88,8 @@ def test_three_colours_and_the_base_in_one_object() -> None:
     assert 'top_z="2.21"' in pause  # the chip still goes in below
     bundle = zipfile.ZipFile(io.BytesIO(figures.bundle_zip(model)))
     readme = bundle.read("LIESMICH.txt").decode()
-    assert "Kopf 2 Name und Akzente, Kopf 3 Figur, Kopf 4 Gesicht" in readme
+    assert "Kopf 2: Name und Akzente – Sonnengelb" in readme  # the frog's belly
+    assert "Kopf 4: Gesicht – Anthrazit" in readme
     assert "ZUSAMMENSETZEN" not in readme  # nothing to glue
     stem = figures.file_stem(model.config)
     assert stem == "myboxi-figur-frog-ida"

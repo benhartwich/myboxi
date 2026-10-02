@@ -34,6 +34,13 @@ path = "hardware/**"
 SPDX-FileCopyrightText = "2026 Benjamin Hartwich"
 SPDX-License-Identifier = "GPL-3.0-or-later"
 
+# Print settings for the Snapmaker U1, exported from Snapmaker Orca 2.4.0 (myboxi_case/slicer.py).
+[[annotations]]
+path = "hardware/case/src/myboxi_case/profiles/**"
+precedence = "override"
+SPDX-FileCopyrightText = "Snapmaker, OrcaSlicer and Bambu Studio contributors"
+SPDX-License-Identifier = "AGPL-3.0-only"
+
 # Vendored third-party files.
 [[annotations]]
 path = "server/src/myboxi_server/api/web/static/htmx.min.js"
