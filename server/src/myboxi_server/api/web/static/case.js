@@ -17,8 +17,9 @@ const defaults = JSON.parse(form.dataset.defaults);
 const suggested = JSON.parse(form.dataset.suggested);
 const pagePath = form.dataset.page || '/gestalten';
 const downloadPath = form.dataset.download || '/gestalten/download.zip';
-const suggestBy = form.dataset.suggestBy || 'form';  // the field whose value picks the colours
-const reframeOn = new Set([suggestBy, ...(form.dataset.reframe || '').split(',').filter(Boolean)]);
+// Fields whose value picks suggested colours (e.g. the form, a figure's motif).
+const suggestBy = new Set((form.dataset.suggestBy || 'form').split(','));
+const reframeOn = new Set([...suggestBy, ...(form.dataset.reframe || '').split(',').filter(Boolean)]);
 let coloursChosen = [...new URLSearchParams(location.search).keys()].some((k) => k.startsWith('color_'));
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -261,7 +262,8 @@ form.addEventListener('input', (event) => {
   const name = event.target.name;
   if (name.startsWith('color_')) coloursChosen = true;
   if (reframeOn.has(name)) framed = false;
-  if (name === suggestBy && !coloursChosen) suggestColours(event.target.value);
+  if (suggestBy.has(name) && !coloursChosen) suggestColours(event.target.value);
+  showChoices();
   window.clearTimeout(timer);
   timer = window.setTimeout(refresh, event.target.name === 'name' ? 450 : 120);
 });
@@ -269,6 +271,16 @@ form.addEventListener('submit', (event) => {
   event.preventDefault();
   refresh();
 });
+
+// Parts of the form that only apply to some choices: data-show-when="top=standee".
+function showChoices() {
+  const values = new FormData(form);
+  for (const element of form.querySelectorAll('[data-show-when]')) {
+    const [key, value] = element.dataset.showWhen.split('=');
+    element.hidden = values.get(key) !== value;
+  }
+}
+showChoices();
 
 for (const button of document.querySelectorAll('[data-toggle]')) {
   button.addEventListener('click', () => {
