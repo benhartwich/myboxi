@@ -157,7 +157,7 @@ async def test_figure_preview_and_download(client: httpx.AsyncClient) -> None:
     assert r.status_code == 200
     assert r.headers["content-encoding"] == "gzip"
     info, meshes = read_preview(r.content)
-    assert info["version"] == "figure 1"
+    assert info["version"] == "figure 2"
     assert len(meshes) == 1
     r = await client.get("/gestalten/figur/download.zip?top=flat&shape=round&name=Lotta")
     assert r.status_code == 200
@@ -188,14 +188,16 @@ async def test_figure_from_the_collection(client: httpx.AsyncClient) -> None:
     page = await client.get("/gestalten/figur?top=standee&motif=frog")
     assert page.status_code == 200
     assert 'name="motif" value="frog" checked' in page.text
-    assert 'data-show-when="top=standee" >' in page.text  # visible without JavaScript
+    assert 'data-show-when="top=figure|standee">' in page.text  # visible without JavaScript
     assert "/static/figure/motif-frog.png?v=" in page.text
-    # the page starts with a figure, so the collection is the first thing to see
+    # the page starts with a round figure, so the collection is the first thing to see
     plain = await client.get("/gestalten/figur")
-    assert 'name="top" value="standee" checked' in plain.text
-    assert 'data-show-when="top=standee" >' in plain.text
+    assert 'name="top" value="figure" checked' in plain.text
+    assert 'data-show-when="top=figure|standee">' in plain.text
+    assert "/static/figure/motif3d-bear.png?v=" in plain.text
+    assert 'data-show-when="top=standee" hidden' in plain.text  # the drawing: flat only
     flat = await client.get("/gestalten/figur?top=flat")
-    assert 'data-show-when="top=standee" hidden' in flat.text
+    assert 'data-show-when="top=figure|standee" hidden' in flat.text
     r = await client.get("/gestalten/figur/vorschau?top=standee&motif=frog")
     info, meshes = read_preview(r.content)
     assert [m["key"] for m in info["meshes"]] == [  # type: ignore[index]
@@ -285,3 +287,19 @@ async def test_only_photos_are_accepted(client: httpx.AsyncClient) -> None:
         )
         assert r.status_code == 422
         assert "JPEG, PNG oder WebP" in r.text or "keine Zeichnung" in r.text
+
+
+async def test_a_round_figure_in_one_piece(client: httpx.AsyncClient) -> None:
+    r = await client.get("/gestalten/figur/vorschau?motif=unicorn&name=Ida")
+    assert r.status_code == 200
+    info, _ = read_preview(r.content)
+    keys = [m["key"] for m in info["meshes"]]  # type: ignore[index]
+    assert keys == ["figure", "figure_inlay", "figure3d", "figure3d_accent", "figure3d_details"]
+    r = await client.get("/gestalten/figur/download.zip?motif=unicorn&name=Ida")
+    archive = zipfile.ZipFile(io.BytesIO(r.content))
+    assert "myboxi-figur-unicorn-ida.3mf" in archive.namelist()
+    assert "Kopf 2 Name und Akzente" in archive.read("LIESMICH.txt").decode()
+    # a drawing only stands flat
+    r = await client.get("/gestalten/figur/vorschau?motif=drawing&drawing=0123456789abcdef")
+    assert r.status_code == 422
+    assert "nur als Aufsteller" in r.text

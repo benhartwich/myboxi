@@ -1,5 +1,6 @@
 """Figure bases, "Figur gestalten" (docs/gehaeuse.md): a base with an enclosed NFC chip turns any
-figure into a box figure (glued on top), or carries studs for building bricks.
+figure into a box figure. It carries a round figure printed with it in one piece (figures3d), a
+flat figure in a slot, studs for building bricks, or nothing (glue a figure on top).
 
 Printed upright, without supports. The chip pocket is closed: the 3MF pauses the print right
 above it (Orca, Snapmaker Orca, Bambu Studio), the chip goes in, the print continues. The chip
@@ -29,7 +30,7 @@ from pydantic import (
     model_validator,
 )
 
-from myboxi_case import export, motifs, patterns, text, trace
+from myboxi_case import export, figures3d, motifs, patterns, text, trace
 from myboxi_case.build import Piece
 from myboxi_case.config import PALETTE, ColorKey, Colors
 from myboxi_case.geom import (
@@ -48,11 +49,12 @@ from myboxi_case.motifs import Motif
 from myboxi_case.render import Item, render
 
 # Part of every digest. Bump on any change that alters generated geometry.
-FIGURE_VERSION = "1"
+FIGURE_VERSION = "2"
 MAX_LABEL = 10
 
 Shape = Literal["round", "square", "heart", "star"]
-Top = Literal["flat", "bricks", "standee"]
+Top = Literal["figure", "standee", "flat", "bricks"]
+FIGURE_TOPS: tuple[str, ...] = ("figure", "standee")  # carry a figure from the collection
 Tag = Literal["coin", "sticker"]
 
 HEIGHT = 8.0
@@ -84,6 +86,7 @@ TILE = 6.0  # thickness of the standing figure
 TAB_WIDTH = 20.0  # the tab under the figure that goes into the base's slot
 SLOT_DEPTH = 5.0
 SLOT_Y = 2.0  # the figure stands just behind the middle of the base
+FIGURE_Y = 2.0  # a round figure: where its feet start, behind the name
 
 
 class FigureError(ValueError):
@@ -108,7 +111,7 @@ class FigureConfig(BaseModel):
 
     shape: Shape = "round"
     size: Literal[40, 50] = 40
-    top: Top = "standee"  # the page is "Figur gestalten": a figure first
+    top: Top = "figure"  # the page is "Figur gestalten": a figure first
     # The standing figure (top == "standee"); otherwise dropped, so equal bases stay equal.
     motif: Motif | Literal["drawing"] = "bear"
     # motif == "drawing": the stored strokes (id from the upload) and how to turn them
@@ -131,11 +134,14 @@ class FigureConfig(BaseModel):
         if not isinstance(data, dict):
             return data
         values = cast(dict[str, object], data)
-        if values.get("top", "standee") != "standee":
+        top = values.get("top", "figure")
+        if top not in FIGURE_TOPS:
             dropped = ("motif", "color_motif", "color_details", "drawing", "turn")
             return {k: v for k, v in values.items() if k not in dropped}
         if values.get("motif", "bear") != "drawing":
             return {k: v for k, v in values.items() if k not in ("drawing", "turn")}
+        if top != "standee":
+            raise ValueError("Eine eigene Zeichnung gibt es nur als Aufsteller.")
         return values
 
     @field_validator("tolerance")
@@ -178,11 +184,25 @@ class FigureConfig(BaseModel):
             return self.color_motif or motifs.COLOURS[self.motif]
         if role == "details":  # the figure's face
             return self.color_details or "anthrazit"
+        if role == "accent" and self.color_accent is None and self.top in FIGURE_TOPS:
+            # also the round figure's belly and snout: suggested per figure
+            return motifs.ACCENTS.get(self.motif) or SUGGESTED[self.shape][1]
         chosen = self.color_base if role == "base" else self.color_accent
         return chosen or SUGGESTED[self.shape][0 if role == "base" else 1]
 
     def color(self, role: Literal["base", "accent", "motif", "details"]) -> str:
         return PALETTE[self.color_key(role)][1]
+
+
+@dataclass(frozen=True)
+class Extra:
+    """A part printed together with the base, in its frame (the round figure's colours)."""
+
+    key: str
+    label: str
+    solid: Manifold
+    color: str
+    tool: int
 
 
 @dataclass(frozen=True)
@@ -194,6 +214,7 @@ class FigureModel:
     studs: int
     label: CrossSection
     tile: Piece | None = None  # the standing figure, printed lying flat
+    extras: tuple[Extra, ...] = ()  # the round figure, printed on the base in one piece
 
     @property
     def pieces(self) -> tuple[Piece, ...]:
@@ -253,6 +274,33 @@ def _slot_y(top_face: CrossSection, label: CrossSection, half_w: float, half_t: 
             return y
     raise FigureError(
         "Für die Figur ist auf diesem Sockel kein Platz. Bitte eine andere Form wählen."
+    )
+
+
+def _figure_place(
+    footprint: CrossSection, top_face: CrossSection, name: str, size: int
+) -> tuple[float, CrossSection]:
+    """Where a round figure stands (its feet on the flat top) and its name: the figure as far
+    to the front as the name in front of it allows."""
+    fits = False
+    for step in range(40):
+        y = FIGURE_Y + (step - 10) * 0.5
+        feet = footprint.translate((0.0, y))
+        if not _inside(feet.offset(0.5), top_face):
+            continue
+        fits = True
+        front = y + bounds(footprint)[1] - LABEL_GAP
+        try:
+            return y, _place_label(name, top_face ^ rect(-60.0, -60.0, 60.0, front), size)
+        except FigureError:
+            continue
+    if fits:
+        other = "Größe 50" if size == 40 else "die Form rund oder eckig"
+        raise FigureError(
+            f"„{name}“ passt nicht vor diese Figur. Bitte einen kürzeren Namen oder {other} wählen."
+        )
+    raise FigureError(
+        "Diese Figur passt nicht auf den Sockel. Bitte Größe 50 oder eine andere Form wählen."
     )
 
 
@@ -359,11 +407,20 @@ def build_figure(cfg: FigureConfig, strokes: trace.Rings | None = None) -> Figur
     pocket = cylinder_z(pocket_r, px, py, SKIN, pocket_z1)
     top_face = outline.offset(-2.4)
     label_region = top_face
+    figure: figures3d.Figure3D | None = None
+    footprint = CrossSection()
+    label = CrossSection()
+    y_fig = FIGURE_Y
+    if cfg.top == "figure" and cfg.motif != "drawing":  # a drawing only stands flat
+        figure = figures3d.figure(cfg.motif, cfg.size / 40)
+        footprint = (figure.body + figure.accent + figure.details).slice(0.1)
+        y_fig, label = _figure_place(footprint, top_face, cfg.name, cfg.size)
     if cfg.top == "standee":
         # the name in front of the figure: its slot starts just behind the middle
         front = SLOT_Y - (TILE / 2 + cfg.tolerance) - 1.0 - LABEL_GAP
         label_region = top_face ^ rect(-60.0, -60.0, 60.0, front)
-    label = _place_label(cfg.name, label_region, cfg.size)
+    if figure is None:
+        label = _place_label(cfg.name, label_region, cfg.size)
     studs: list[tuple[float, float]] = []
     if cfg.top == "bricks":
         stud_r = (5.0 - cfg.tolerance) / 2  # 4.8 mm at the default tolerance
@@ -375,6 +432,31 @@ def build_figure(cfg: FigureConfig, strokes: trace.Rings | None = None) -> Figur
                 body,
                 *(cylinder_z(stud_r, x, y, HEIGHT - 0.01, HEIGHT + STUD_HEIGHT) for x, y in studs),
             ]
+        )
+    extras: tuple[Extra, ...] = ()
+    if figure is not None:
+        title_name = motifs.LABELS[cfg.motif]
+
+        def place(m: Manifold) -> Manifold:
+            return m.translate((0.0, y_fig, HEIGHT))
+
+        if cfg.colors == "multi":
+            parts = (
+                ("figure3d", f"Figur {title_name}", figure.body, cfg.color("motif"), TOOL_MOTIF),
+                ("figure3d_accent", f"Figur {title_name} Akzente", figure.accent,
+                 cfg.color("accent"), TOOL_ACCENT),
+                ("figure3d_details", f"Figur {title_name} Gesicht", figure.details,
+                 cfg.color("details"), TOOL_DETAILS),
+            )  # fmt: skip
+        else:  # one filament: the face is engraved, the figure has the base's colour
+            parts = (
+                ("figure3d", f"Figur {title_name}", figure.body + figure.accent,
+                 cfg.color("base"), TOOL_BASE),
+            )  # fmt: skip
+        extras = tuple(
+            Extra(key, label_text, place(m), colour, tool)
+            for key, label_text, m, colour, tool in parts
+            if not m.is_empty()
         )
     tile: Piece | None = None
     if cfg.top == "standee":
@@ -423,7 +505,7 @@ def build_figure(cfg: FigureConfig, strokes: trace.Rings | None = None) -> Figur
     )
     return FigureModel(
         cfg, piece, outline, (px, py, pocket_r, SKIN, round(pocket_z1, 2)), len(studs), label,
-        tile,
+        tile, extras,
     )  # fmt: skip
 
 
@@ -438,6 +520,8 @@ def title(cfg: FigureConfig) -> str:
         return f"Myboxi Figur aus einer Zeichnung{name}"
     if cfg.top == "standee":
         return f"Myboxi Figur {motifs.LABELS[cfg.motif]}{name}"
+    if cfg.top == "figure":
+        return f"Myboxi 3D-Figur {motifs.LABELS[cfg.motif]}{name}"
     return f"Myboxi Figurensockel {SHAPE_LABELS[cfg.shape]}{name}"
 
 
@@ -449,23 +533,40 @@ def file_stem(cfg: FigureConfig) -> str:
     slug = "".join(ch if ch.isascii() and ch.isalnum() else "-" for ch in name).strip("-")
     while "--" in slug:
         slug = slug.replace("--", "-")
-    kind = cfg.motif if cfg.top == "standee" else cfg.shape
+    kind = cfg.motif if cfg.top in FIGURE_TOPS else cfg.shape
     return "-".join(part for part in ("myboxi-figur", kind, slug) if part)
 
 
 GAP = 8.0
 
 
-def _plate(model: FigureModel) -> list[tuple[Piece, Manifold, Manifold]]:
+Member = tuple[str, Manifold, str, int]  # label, mesh, colour, tool
+
+
+def _members(model: FigureModel, piece: Piece) -> list[Member]:
+    """The parts of one printed object, in print orientation: the piece, its inlay and, for
+    the base, a round figure printed with it."""
+    members: list[Member] = [(piece.label, piece.printed(piece.solid), piece.color, piece.tool)]
+    if not piece.inlay.is_empty():
+        members.append(
+            (f"{piece.label} Details", piece.printed(piece.inlay), piece.inlay_color,
+             piece.inlay_tool)
+        )  # fmt: skip
+    if piece is model.piece:
+        members += [(e.label, piece.printed(e.solid), e.color, e.tool) for e in model.extras]
+    return members
+
+
+def _plate(model: FigureModel) -> list[tuple[Piece, list[Member]]]:
     """Every piece in print orientation, side by side around the plate centre."""
-    printed = [(p, p.printed(p.solid), p.printed(p.inlay)) for p in model.pieces]
-    widths = [bbox(solid)[3] - bbox(solid)[0] for _, solid, _ in printed]
+    printed = [(p, _members(model, p)) for p in model.pieces]
+    boxes = [bbox(union([m for _, m, _, _ in members])) for _, members in printed]
+    widths = [b[3] - b[0] for b in boxes]
     x = PLATE_CENTRE[0] - (sum(widths) + GAP * (len(widths) - 1)) / 2
-    placed: list[tuple[Piece, Manifold, Manifold]] = []
-    for (piece, solid, inlay), width in zip(printed, widths, strict=True):
-        x0, y0, _, _, y1, _ = bbox(solid)
-        shift = (x - x0, PLATE_CENTRE[1] - (y0 + y1) / 2, 0.0)
-        placed.append((piece, solid.translate(shift), inlay.translate(shift)))
+    placed: list[tuple[Piece, list[Member]]] = []
+    for (piece, members), b, width in zip(printed, boxes, widths, strict=True):
+        shift = (x - b[0], PLATE_CENTRE[1] - (b[1] + b[4]) / 2, 0.0)
+        placed.append((piece, [(lb, m.translate(shift), c, t) for lb, m, c, t in members]))
         x += width + GAP
     return placed
 
@@ -484,8 +585,9 @@ def pause_xml(model: FigureModel, multi: bool) -> str:
 
 
 def _multi(model: FigureModel) -> bool:
-    return model.config.colors == "multi" and any(
-        not p.inlay.is_empty() or p.tool != TOOL_BASE for p in model.pieces
+    return model.config.colors == "multi" and (
+        any(not p.inlay.is_empty() or p.tool != TOOL_BASE for p in model.pieces)
+        or any(e.tool != TOOL_BASE for e in model.extras)
     )
 
 
@@ -497,10 +599,7 @@ def threemf(model: FigureModel) -> bytes:
     builds: list[str] = []
     config: list[str] = []
     next_id = 2  # id 1: base materials
-    for piece, solid, inlay in _plate(model):
-        members = [(piece.label, solid, piece.color, piece.tool)]
-        if not inlay.is_empty():
-            members.append((f"{piece.label} Details", inlay, piece.inlay_color, piece.inlay_tool))
+    for piece, members in _plate(model):
         ids: list[int] = []
         for label, mesh, color, _ in members:
             if color not in colors:
@@ -568,7 +667,9 @@ def threemf(model: FigureModel) -> bytes:
 
 def _colours(model: FigureModel) -> str:
     cfg = model.config
-    roles = ["base", "accent"] + (["motif", "details"] if cfg.top == "standee" else [])
+    roles = ["base", "accent"] + (["motif", "details"] if cfg.top in FIGURE_TOPS else [])
+    if cfg.top == "figure" and cfg.colors != "multi":
+        roles = ["base"]
     names = list(dict.fromkeys(PALETTE[cfg.color_key(r)][0] for r in roles))  # type: ignore[arg-type]
     return ", ".join(names[:-1]) + " und " + names[-1] if len(names) > 1 else names[0]
 
@@ -578,9 +679,11 @@ def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
     multi = _multi(model)
     pause = f"{model.pause_z:.1f}".replace(".", ",")
     standee = cfg.top == "standee"
+    round_figure = cfg.top == "figure"
     heads = "  Snapmaker U1: Kopf 1 Sockel, Kopf 2 Name" + (
-        ", Kopf 3 Figur, Kopf 4 Gesicht." if standee else "."
-    )
+        ", Kopf 3 Figur, Kopf 4 Gesicht." if standee
+        else " und Akzente, Kopf 3 Figur, Kopf 4 Gesicht." if round_figure else "."
+    )  # fmt: skip
     lines = [
         title(cfg),
         "=" * len(title(cfg)),
@@ -601,6 +704,9 @@ def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
         "  Die 3MF öffnen (Orca Slicer, Snapmaker Orca, Bambu Studio), Schichthöhe 0,2 mm,",
         "  Füllung 20 %, keine Stützen. Alles liegt schon richtig auf der Platte"
         + (", die Figur flach daneben." if standee else "."),
+        *(["  Die Figur druckt aufrecht mit dem Sockel in einem Stück. Unter Kinn, Armen und",
+           "  Ohren hat sie kleine Schrägen, damit nichts in der Luft hängt."]
+          if round_figure else []),
         *([heads] if multi else []),
         f"  Druckpause bei {pause} mm: Sie steckt schon in der 3MF. Wenn der Drucker anhält,",
         "  den NFC-Chip flach in die runde Vertiefung legen (Schrift egal) und fortsetzen.",
@@ -638,6 +744,12 @@ def bundle_zip(model: FigureModel, url: str | None = None) -> bytes:
                 (f"stl/{stem}{suffix}-details.stl",
                  export.stl(piece.printed(piece.inlay), f"{piece.label} Details"))
             )  # fmt: skip
+    for extra in model.extras:  # in the base's frame: load together, as parts of one object
+        name = {"figure3d": "-figur", "figure3d_accent": "-figur-akzente",
+                "figure3d_details": "-figur-gesicht"}[extra.key]  # fmt: skip
+        entries.append(
+            (f"stl/{stem}{name}.stl", export.stl(model.piece.printed(extra.solid), extra.label))
+        )
     config: dict[str, object] = {
         "generator": f"figure {FIGURE_VERSION}",
         "digest": model.config.digest(),
@@ -663,6 +775,11 @@ def _assembled(model: FigureModel) -> list[tuple[dict[str, object], Manifold]]:
                 (meta | {"key": f"{piece.key}_inlay", "kind": "inlay", "color": piece.inlay_color},
                  piece.inlay)
             )  # fmt: skip
+    for extra in model.extras:
+        meshes.append(
+            ({"key": extra.key, "label": extra.label, "kind": "part", "color": extra.color,
+              "explode": (0, 0, 0)}, extra.solid)
+        )  # fmt: skip
     return meshes
 
 
@@ -676,4 +793,5 @@ def preview(model: FigureModel) -> bytes:
 
 def png(model: FigureModel, size: tuple[int, int] = (480, 360)) -> bytes:
     items = [Item(m, str(meta["color"])) for meta, m in _assembled(model)]
-    return render(items, size=size, yaw=-25.0, pitch=35.0 if model.tile is None else 18.0)
+    upright = model.tile is not None or bool(model.extras)
+    return render(items, size=size, yaw=-25.0, pitch=18.0 if upright else 35.0)

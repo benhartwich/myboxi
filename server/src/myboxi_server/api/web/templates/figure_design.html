@@ -7,13 +7,15 @@
 <div class="case-head">
   <p class="eyebrow">Druckvorlage</p>
   <h1>Figur gestalten</h1>
-  <p class="muted">Ein Sockel mit eingebautem NFC-Chip macht jede Figur zur Box-Figur: eine Lieblingsfigur daraufkleben, Klemmbausteine aufstecken, eine Figur aus unserer Sammlung wählen oder die Zeichnung eures Kindes zur Figur machen. Form, Farben und Namen wählen, Druckdateien laden.</p>
+  <p class="muted">Ein Sockel mit eingebautem NFC-Chip macht jede Figur zur Box-Figur: eine 3D-Figur aus unserer Sammlung, ein Aufsteller nach der Zeichnung eures Kindes, eine aufgeklebte Lieblingsfigur oder Klemmbausteine. Form, Farben und Namen wählen, Druckdateien laden.</p>
 </div>
 
 <div class="case">
   <section class="viewer" aria-label="Vorschau">
     <div class="viewer-stage" id="stage" data-preview="/gestalten/figur/vorschau">
-      {% if cfg.top == 'standee' %}
+      {% if cfg.top == 'figure' %}
+      <img class="viewer-fallback" src="{{ asset('figure/motif3d-' ~ cfg.motif ~ '.png') }}" alt="3D-Figur (Beispielbild)" width="480" height="360">
+      {% elif cfg.top == 'standee' %}
       <img class="viewer-fallback" src="{{ asset('figure/motif-' ~ cfg.motif ~ '.png') }}" alt="Figur (Beispielbild)" width="480" height="360">
       {% else %}
       <img class="viewer-fallback" src="{{ asset('figure/' ~ cfg.shape ~ '.png') }}" alt="{{ shape_label }} (Beispielbild)" width="480" height="360">
@@ -41,13 +43,14 @@
       </div>
     </fieldset>
 
-    <fieldset class="field" data-show-when="top=standee" {% if cfg.top != 'standee' %}hidden{% endif %}>
+    <fieldset class="field" {{ show('top=figure|standee') }}>
       <legend>Figur</legend>
       <div class="form-cards">
         {% for key, label in motifs %}
-        <label class="form-card">
+        <label class="form-card" {% if key == 'drawing' %}{{ show('top=standee') }}{% endif %}>
           <input type="radio" name="motif" value="{{ key }}" {% if cfg.motif == key %}checked{% endif %}>
-          <img src="{{ asset('figure/motif-' ~ key ~ '.png') }}" alt="" width="240" height="180" loading="lazy">
+          {% if key != 'drawing' %}<img src="{{ asset('figure/motif3d-' ~ key ~ '.png') }}" alt="" width="240" height="180" loading="lazy" {{ show('top=figure') }}>{% endif %}
+          <img src="{{ asset('figure/motif-' ~ key ~ '.png') }}" alt="" width="240" height="180" loading="lazy" {% if key != 'drawing' %}{{ show('top=standee') }}{% endif %}>
           <strong>{{ label }}</strong>
         </label>
         {% endfor %}
@@ -97,9 +100,10 @@
       <span class="muted">Bis {{ max_label }} Zeichen. Leer lassen geht auch.</span>
     </label>
 
-    {% for field, role, label, standee_only in color_roles %}
-    <fieldset class="field" {% if standee_only %}data-show-when="top=standee" {% if cfg.top != 'standee' %}hidden{% endif %}{% endif %}>
+    {% for field, role, label, rule in color_roles %}
+    <fieldset class="field" {% if rule %}{{ show(rule) }}{% endif %}>
       <legend>Farbe {{ label }}</legend>
+      {% if role == 'accent' %}<span class="muted" {{ show('top=figure') }}>Bei der 3D-Figur auch Bauch, Schnauze und Ohren.</span>{% endif %}
       <div class="swatches">
         {% for key, color in palette.items() %}
         <label class="swatch" title="{{ color[0] }}">

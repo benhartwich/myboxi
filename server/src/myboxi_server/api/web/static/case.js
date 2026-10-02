@@ -255,10 +255,16 @@ async function refresh() {
   }
 }
 
-function suggestColours(shape) {
-  for (const [name, value] of Object.entries(suggested[shape] || {})) {
-    const input = form.querySelector(`input[name="${name}"][value="${value}"]`);
-    if (input) input.checked = true;
+// The colours the server suggests, from the visible choices in order (a figure's accent
+// follows the figure, otherwise the base's shape).
+function suggestColours() {
+  for (const field of suggestBy) {
+    const chosen = form.querySelector(`input[name="${field}"]:checked`);
+    if (!chosen || chosen.closest('[hidden]')) continue;
+    for (const [name, value] of Object.entries(suggested[chosen.value] || {})) {
+      const input = form.querySelector(`input[name="${name}"][value="${value}"]`);
+      if (input) input.checked = true;
+    }
   }
 }
 
@@ -266,8 +272,8 @@ form.addEventListener('input', (event) => {
   const name = event.target.name;
   if (name.startsWith('color_')) coloursChosen = true;
   if (reframeOn.has(name)) framed = false;
-  if (suggestBy.has(name) && !coloursChosen) suggestColours(event.target.value);
   showChoices();
+  if (!coloursChosen) suggestColours();
   window.clearTimeout(timer);
   timer = window.setTimeout(refresh, event.target.name === 'name' ? 450 : 120);
 });
@@ -276,12 +282,19 @@ form.addEventListener('submit', (event) => {
   refresh();
 });
 
-// Parts of the form that only apply to some choices: data-show-when="top=standee".
+// Parts of the form that only apply to some choices: data-show-when="top=figure|standee".
+// A choice that disappears (the drawing for a 3D figure) gives way to the first one left.
 function showChoices() {
   const values = new FormData(form);
   for (const element of form.querySelectorAll('[data-show-when]')) {
-    const [key, value] = element.dataset.showWhen.split('=');
-    element.hidden = values.get(key) !== value;
+    const [key, options] = element.dataset.showWhen.split('=');
+    element.hidden = !options.split('|').includes(String(values.get(key)));
+  }
+  for (const input of form.querySelectorAll('input[type="radio"]:checked')) {
+    if (!input.closest('[hidden]')) continue;
+    const visible = [...form.querySelectorAll(`input[name="${input.name}"]`)]
+      .find((other) => !other.closest('[hidden]'));
+    if (visible) visible.checked = true;
   }
 }
 showChoices();

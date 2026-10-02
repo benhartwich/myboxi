@@ -136,13 +136,18 @@ Unter **app.myboxi.eu/gestalten/figur** („Figur gestalten“) entsteht ein Soc
 - Form: rund, eckig, Herz oder Stern. Spitzen und Ecken sind abgerundet.
 - Größe: 40 oder 50 mm.
 - Oberseite:
+  - **3D-Figur** aus unserer Sammlung: Bär, Katze, Hase, Frosch, Einhorn oder ein Männchen, rund modelliert, etwa 4 bis 5,5 cm hoch (beim 50-mm-Sockel ein Viertel größer).
+    - Sie wird aufrecht und in einem Stück mit dem Sockel gedruckt, ohne Stützen und ohne Kleben. Unter Kinn, Armen und Ohren sitzen dafür kleine 45°-Schrägen; nichts beginnt in der Luft.
+    - Vierfarbig auf dem Snapmaker U1: Kopf 1 Sockel, Kopf 2 Name und Akzente (Bauch, Schnauze, Ohren, Horn), Kopf 3 Figur, Kopf 4 Gesicht. Die Farbe der Akzente wird je Figur vorgeschlagen, etwa Rosa beim Einhorn.
+    - Einfarbig ist das Gesicht eingraviert.
+    - Geprüft mit dem Profil des Snapmaker U1 in Snapmaker Orca: druckt ohne Stützen, Druckpause für den Chip wie beim Sockel, etwa 3,5 bis 4 Stunden.
   - **Flach**, um eine vorhandene Figur daraufzukleben, etwa ein Spieltier. Am besten mit 2K-Kleber oder Sekundenkleber-Gel.
   - **Noppen** für Klemmbausteine: Eine Minifigur oder etwas Gebautes steckt direkt darauf. Die Noppen sitzen im üblichen 8-mm-Raster, als rechteckiger Block. Wie fest sie halten, regelt „Spiel für die Noppen“: weniger Spiel heißt dickere Noppen und festeren Halt.
-  - **Figur** aus unserer Sammlung: Bär, Katze, Hase, Frosch, Einhorn oder ein Männchen, etwa 5 cm hoch und 6 mm dick.
+  - **Aufsteller**: dieselben Figuren flach, etwa 5 cm hoch und 6 mm dick, oder eine eigene Zeichnung.
     - Die Figur wird flach neben dem Sockel gedruckt, mit dem Gesicht nach oben; so wird die Vorderseite sauber und mehrfarbig.
     - Danach steckt sie mit einem Steg in einem Schlitz des Sockels und wird dort festgeklebt.
     - Zweifarbig druckt der Snapmaker U1 alles in einem Durchgang: Kopf 1 Sockel, Kopf 2 Name, Kopf 3 Figur, Kopf 4 Gesicht.
-  - **Eigene Zeichnung:** Das Kind malt eine Figur, ihr ladet ein Foto davon hoch (JPEG, PNG oder WebP, bis 16 MB).
+  - **Eigene Zeichnung** (als Aufsteller): Das Kind malt eine Figur, ihr ladet ein Foto davon hoch (JPEG, PNG oder WebP, bis 16 MB).
     - Am besten mit dunklem Stift auf hellem Papier malen und gerade von oben fotografieren. Das Blatt darf am Rand angeschnitten sein; Tisch und Blattkante werden ignoriert.
     - Der Server erkennt die Striche, füllt geschlossene Flächen und legt einen 2,5-mm-Rand um alles, wie bei einem ausgeschnittenen Aufkleber. Dünne Linien werden so druckbar, Spitzen rund. Die Striche selbst kommen als zweite Farbe auf die Vorderseite.
     - Liegt das Foto quer, lässt sich die Zeichnung in 90°-Schritten drehen.
