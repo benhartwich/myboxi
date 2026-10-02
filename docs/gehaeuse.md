@@ -36,6 +36,11 @@ Alles druckt ohne Stützmaterial. Jedes Teil passt auf 180 × 180 mm, also auch 
 - PETG, 0,2 mm Schichthöhe, 4 Wände, 15 % Füllung.
 - PLA geht mit dem Pi Zero 2 W auch. Der Pi 4 wird warm, dafür PETG nehmen.
 
+**Snapmaker U1:** Im ZIP liegt unter `snapmaker-u1/` ein fertiges Projekt für Snapmaker Orca. Es enthält die gewählten Farben je Kopf und verweist auf die Systemprofile „Snapmaker U1 (0.4 nozzle)“, „0.20mm Standard“ und „Snapmaker PLA Basic“. Orca nimmt dabei die Profile, die auf dem Rechner installiert sind; aus der Datei kommen nur die Farben. Filamente bei Bedarf an die eingelegten anpassen.
+- Warum ein eigenes Projekt: Orca übernimmt Filamentfarben nur aus einer vollständigen Projektkonfiguration. Die Farben im 3MF selbst ordnen nur die Köpfe zu.
+- Die neutrale 3MF im Hauptordner ist für alle anderen Drucker und Slicer gedacht; dort die Farben im Slicer selbst wählen. Welche Farbe auf welchen Kopf gehört, steht in der `LIESMICH.txt`.
+- Die Vorlage (`hardware/case/src/myboxi_case/profiles/snapmaker-u1-project.json`) ist mit Snapmaker Orca 2.4.0 exportiert (`--export-3mf`) und steht wie dessen Profile unter AGPL-3.0.
+
 **Mehrfarbig (Snapmaker U1, Orca, Bambu Studio)**
 - Die 3MF-Dateien ordnen jedes Teil einem Kopf zu:
 

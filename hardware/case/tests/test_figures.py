@@ -168,7 +168,7 @@ def test_a_figure_prints_with_four_colours_on_one_plate() -> None:
     assert modelxml.count("<item ") == 2  # base and figure, side by side
     readme = zipfile.ZipFile(io.BytesIO(figures.bundle_zip(model))).read("LIESMICH.txt").decode()
     assert "ZUSAMMENSETZEN" in readme
-    assert "Kopf 4 Gesicht" in readme
+    assert "Kopf 4: Gesicht – Anthrazit" in readme
     assert figures.title(model.config) == "Myboxi Figur Einhorn „Mia“"
 
 

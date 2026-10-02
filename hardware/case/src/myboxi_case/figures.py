@@ -47,6 +47,7 @@ from myboxi_case.geom import (
 )
 from myboxi_case.motifs import Motif
 from myboxi_case.render import Item, render
+from myboxi_case.slicer import U1_FOLDER, u1_project_settings
 
 # Part of every digest. Bump on any change that alters generated geometry.
 FIGURE_VERSION = "2"
@@ -591,7 +592,7 @@ def _multi(model: FigureModel) -> bool:
     )
 
 
-def threemf(model: FigureModel) -> bytes:
+def threemf(model: FigureModel, *, u1: bool = False) -> bytes:
     """One plate: the base (with the pause for the chip) and, for a standee, the figure lying
     next to it. Parts carry their tool head for Orca and the Snapmaker U1."""
     colors: list[str] = []
@@ -661,6 +662,11 @@ def threemf(model: FigureModel) -> bytes:
             ("3D/3dmodel.model", model_xml),
             ("Metadata/model_settings.config", settings),
             ("Metadata/custom_gcode_per_layer.xml", pause_xml(model, _multi(model))),
+            *(
+                [("Metadata/project_settings.config", u1_project_settings(_head_colours(model)))]
+                if u1
+                else []
+            ),
         ]
     )
 
@@ -674,16 +680,33 @@ def _colours(model: FigureModel) -> str:
     return ", ".join(names[:-1]) + " und " + names[-1] if len(names) > 1 else names[0]
 
 
+def _heads(model: FigureModel) -> list[tuple[str, str]]:
+    """What each tool head prints, and in which colour (palette key), heads 1 to 4."""
+    cfg = model.config
+    heads = [
+        ("Sockel", cfg.color_key("base")),
+        ("Name und Akzente" if cfg.top == "figure" else "Name", cfg.color_key("accent")),
+    ]
+    if cfg.top in FIGURE_TOPS:
+        heads += [("Figur", cfg.color_key("motif")), ("Gesicht", cfg.color_key("details"))]
+    return heads
+
+
+def _head_colours(model: FigureModel) -> list[str]:
+    return [PALETTE[key][1] for _, key in _heads(model)]
+
+
 def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
     cfg = model.config
     multi = _multi(model)
     pause = f"{model.pause_z:.1f}".replace(".", ",")
     standee = cfg.top == "standee"
     round_figure = cfg.top == "figure"
-    heads = "  Snapmaker U1: Kopf 1 Sockel, Kopf 2 Name" + (
-        ", Kopf 3 Figur, Kopf 4 Gesicht." if standee
-        else " und Akzente, Kopf 3 Figur, Kopf 4 Gesicht." if round_figure else "."
-    )  # fmt: skip
+    stem = file_stem(cfg)
+    heads = [
+        f"    Kopf {i}: {what} – {PALETTE[key][0]}"
+        for i, (what, key) in enumerate(_heads(model), start=1)
+    ]
     lines = [
         title(cfg),
         "=" * len(title(cfg)),
@@ -701,13 +724,17 @@ def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
         *(["  Ein paar Tropfen Sekundenkleber für die Figur im Sockel"] if standee else []),
         "",
         "DRUCKEN",
-        "  Die 3MF öffnen (Orca Slicer, Snapmaker Orca, Bambu Studio), Schichthöhe 0,2 mm,",
-        "  Füllung 20 %, keine Stützen. Alles liegt schon richtig auf der Platte"
+        f"  Snapmaker U1: {U1_FOLDER}/{stem}.3mf in Snapmaker Orca öffnen. Die Farben je Kopf",
+        "  und die Einstellungen (0,4-mm-Düse, 0,20 mm Standard, Snapmaker PLA Basic) sind",
+        "  gesetzt; die Filamente bei Bedarf an die eingelegten anpassen.",
+        f"  Andere Drucker: {stem}.3mf öffnen (Orca Slicer, Bambu Studio), Schichthöhe 0,2 mm,",
+        "  Füllung 20 %, keine Stützen. Die Farben im Slicer für die Köpfe selbst wählen.",
+        "  Alles liegt schon richtig auf der Platte"
         + (", die Figur flach daneben." if standee else "."),
         *(["  Die Figur druckt aufrecht mit dem Sockel in einem Stück. Unter Kinn, Armen und",
            "  Ohren hat sie kleine Schrägen, damit nichts in der Luft hängt."]
           if round_figure else []),
-        *([heads] if multi else []),
+        *(["  Köpfe und Farben:", *heads] if multi else []),
         f"  Druckpause bei {pause} mm: Sie steckt schon in der 3MF. Wenn der Drucker anhält,",
         "  den NFC-Chip flach in die runde Vertiefung legen (Schrift egal) und fortsetzen.",
         "  Mit STL statt 3MF: die Pause im Slicer selbst setzen, auf die erste Schicht über",
@@ -726,6 +753,8 @@ def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
         "",
         "LIZENZ",
         "  Erzeugte Druckdateien: CC BY-SA 4.0 (Myboxi, myboxi.eu).",
+        f"  Die Druckeinstellungen in {U1_FOLDER}/ stammen aus den Profilen von Snapmaker Orca",
+        "  (AGPL-3.0).",
         "",
     ]  # fmt: skip
     return "\n".join(lines)
@@ -733,7 +762,10 @@ def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
 
 def bundle_zip(model: FigureModel, url: str | None = None) -> bytes:
     stem = file_stem(model.config)
-    entries: list[tuple[str, str | bytes]] = [(f"{stem}.3mf", threemf(model))]
+    entries: list[tuple[str, str | bytes]] = [
+        (f"{stem}.3mf", threemf(model)),
+        (f"{U1_FOLDER}/{stem}.3mf", threemf(model, u1=True)),
+    ]
     for piece in model.pieces:
         suffix = "" if piece.key == "figure" else "-figur"
         entries.append(

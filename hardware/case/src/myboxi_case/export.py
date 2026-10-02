@@ -11,6 +11,7 @@ import struct
 import zipfile
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Literal
 from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
@@ -19,8 +20,9 @@ from manifold3d import Manifold
 
 from myboxi_case import GENERATOR_VERSION
 from myboxi_case.build import CaseModel, Piece
-from myboxi_case.config import CaseConfig
+from myboxi_case.config import PALETTE, CaseConfig
 from myboxi_case.geom import bbox, mesh_arrays
+from myboxi_case.slicer import U1_FOLDER, u1_project_settings
 
 PLATE = (5.0, 265.0)  # usable area on a Snapmaker U1 plate (270 x 270), x and y
 # Kept free for the U1's prime tower (Orca default position 15/220, 30 mm wide, plus brim).
@@ -123,21 +125,29 @@ def _mesh_xml(m: Manifold) -> str:
     return f"<mesh><vertices>{v}</vertices><triangles>{t}</triangles></mesh>"
 
 
-def threemf(model: CaseModel) -> list[bytes]:
+def threemf(model: CaseModel, *, u1: bool = False) -> list[bytes]:
     """One 3MF per print plate; each object is a printed part, inlays are extra parts of it.
 
     Colours as 3MF base materials; tool heads in Metadata/model_settings.config, which Orca,
-    Snapmaker Orca and Bambu Studio read to assign each part to a filament.
+    Snapmaker Orca and Bambu Studio read to assign each part to a filament. ``u1``: a project
+    for the Snapmaker U1 that also carries the colours per head (slicer.py).
     """
     placed = arrange(model.pieces)
     plates = max(p.plate for p in placed) + 1
     return [
-        _threemf_plate(model, [p for p in placed if p.plate == plate], plate, plates)
+        _threemf_plate(model, [p for p in placed if p.plate == plate], plate, plates, u1)
         for plate in range(plates)
     ]
 
 
-def _threemf_plate(model: CaseModel, placed: list[Placed], plate: int, plates: int) -> bytes:
+def head_colours(cfg: CaseConfig) -> list[str]:
+    """Heads 1 to 3: body and base, front, inlays."""
+    return [cfg.color("body"), cfg.color("front"), cfg.color("accent")]
+
+
+def _threemf_plate(
+    model: CaseModel, placed: list[Placed], plate: int, plates: int, u1: bool = False
+) -> bytes:
     colors: list[str] = []
 
     def material(color: str) -> int:
@@ -214,8 +224,10 @@ def _threemf_plate(model: CaseModel, placed: list[Placed], plate: int, plates: i
             ("_rels/.rels", rels),
             ("3D/3dmodel.model", model_xml),
             ("Metadata/model_settings.config", settings),
+            *([("Metadata/project_settings.config",
+                u1_project_settings(head_colours(model.config)))] if u1 else []),
         ]
-    )
+    )  # fmt: skip
 
 
 def _zip(entries: Iterable[tuple[str, str | bytes]]) -> bytes:
@@ -355,6 +367,10 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
     cfg = model.config
     multi = cfg.colors == "multi"
     labels = {p.key: p.label for p in model.pieces}
+
+    def colour(role: Literal["body", "front", "accent"]) -> str:
+        return PALETTE[cfg.color_key(role)][0]
+
     lines = [
         title(model.config),
         "=" * len(title(model.config)),
@@ -375,10 +391,14 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
         lines += [
             "",
             "MEHRFARBIG (z. B. Snapmaker U1, Orca/Snapmaker Orca)",
-            "  Die 3MF-Datei ordnet die Teile den Köpfen zu:",
-            f"    Kopf 1: {labels['body']}, {labels['base']}",
-            f"    Kopf 2: {labels['front']}, {labels['speaker_ring']}",
-            "    Kopf 3: Einlagen (Name, Symbole, Figurenring) und Figurensockel",
+            f"  Snapmaker U1: die Dateien in {U1_FOLDER}/ in Snapmaker Orca öffnen. Die Farben je",
+            "  Kopf und die Einstellungen (0,4-mm-Düse, 0,20 mm Standard, Snapmaker PLA Basic)",
+            "  sind gesetzt; Filamente bei Bedarf an die eingelegten anpassen (PETG empfohlen).",
+            "  Die 3MF-Dateien ordnen die Teile den Köpfen zu:",
+            f"    Kopf 1: {labels['body']}, {labels['base']} – {colour('body')}",
+            f"    Kopf 2: {labels['front']}, {labels['speaker_ring']} – {colour('front')}",
+            "    Kopf 3: Einlagen (Name, Symbole, Figurenring) und Figurensockel – "
+            + colour("accent"),
             "  Ohne Mehrfarbdrucker: Einlagen-Teile löschen, die Gravur bleibt sichtbar.",
         ]
     lines += [
@@ -423,6 +443,8 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
         "LIZENZ",
         "  Druckdateien: CC BY-SA 4.0 (Namensnennung: Myboxi, myboxi.eu).",
         "  Generator: GPL-3.0-or-later, https://github.com/benhartwich/myboxi",
+        f"  Die Druckeinstellungen in {U1_FOLDER}/ stammen aus den Profilen von Snapmaker Orca",
+        "  (AGPL-3.0).",
         "",
         f"Generator {GENERATOR_VERSION} · Konfiguration {cfg.digest()[:12]}",
     ]
@@ -434,9 +456,10 @@ def bundle_zip(model: CaseModel, url: str | None = None) -> bytes:
     stem = file_stem(model.config)
     entries: list[tuple[str, str | bytes]] = []
     plates = threemf(model)
-    for i, data in enumerate(plates):
-        name = f"{stem}.3mf" if len(plates) == 1 else f"{stem}-platte-{i + 1}.3mf"
-        entries.append((name, data))
+    for folder, files_ in (("", plates), (f"{U1_FOLDER}/", threemf(model, u1=True))):
+        for i, data in enumerate(files_):
+            name = f"{stem}.3mf" if len(plates) == 1 else f"{stem}-platte-{i + 1}.3mf"
+            entries.append((folder + name, data))
     for p in model.pieces:
         entries.append((f"stl/{stem}-{p.key}.stl", stl(p.printed(p.solid), p.label)))
         if not p.inlay.is_empty():
