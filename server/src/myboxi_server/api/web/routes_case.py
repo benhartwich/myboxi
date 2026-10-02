@@ -194,10 +194,11 @@ FIGURE_SHAPES = (
     ("heart", "Herz", "Mit abgerundeter Spitze."),
     ("star", "Stern", "Mit runden Zacken."),
 )
+# key, label, text, picture
 FIGURE_TOPS = (
-    ("flat", "Flach", "Eine Figur daraufkleben, z. B. Tier- oder Spielfiguren."),
-    ("bricks", "Noppen", "Für Klemmbausteine: Minifigur oder Gebautes aufstecken."),
-    ("standee", "Figur", "Eine Figur aus unserer Sammlung steckt im Sockel."),
+    ("standee", "Figur", "Aus unserer Sammlung oder eure eigene Zeichnung.", "motif-bear"),
+    ("flat", "Flach", "Eine eigene Figur daraufkleben, z. B. ein Spieltier.", "round"),
+    ("bricks", "Noppen", "Klemmbausteine aufstecken, z. B. eine Minifigur.", "top-bricks"),
 )
 # field, role, label, only for a figure from the collection
 FIGURE_COLOR_ROLES = (

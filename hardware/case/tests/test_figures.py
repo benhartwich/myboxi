@@ -40,7 +40,7 @@ def test_every_choice_prints_without_supports(shape: str, size: int, top: str, t
 
 
 def test_the_chip_is_enclosed_close_to_the_bottom() -> None:
-    model = build_figure(FigureConfig())
+    model = build_figure(FigureConfig(top="flat"))
     px, py, r, z0, z1 = model.pocket
     assert z0 == figures.SKIN == 0.8  # close to the box's reader
     assert z1 == pytest.approx(2.2)  # coin 1.2 mm + 0.2 mm play
@@ -119,7 +119,7 @@ def test_query_round_trip_and_digest() -> None:
 
 
 def test_preview_uses_the_case_format() -> None:
-    model = build_figure(FigureConfig(name="Lotta"))
+    model = build_figure(FigureConfig(top="flat", name="Lotta"))
     info, meshes = export.read_preview(figures.preview(model))
     assert [m["key"] for m in info["meshes"]] == ["figure", "figure_inlay"]  # type: ignore[index]
     assert len(meshes) == 2
@@ -173,8 +173,9 @@ def test_a_figure_prints_with_four_colours_on_one_plate() -> None:
 
 
 def test_the_figure_only_counts_for_standees() -> None:
-    assert FigureConfig(top="flat", motif="cat", color_motif="rot") == FigureConfig()
-    assert FigureConfig(top="standee", motif="cat").query() == {"top": "standee", "motif": "cat"}
+    assert FigureConfig(top="flat", motif="cat", color_motif="rot") == FigureConfig(top="flat")
+    assert FigureConfig(top="flat").query() == {"top": "flat"}
+    assert FigureConfig(motif="cat").query() == {"motif": "cat"}  # a figure is the default
     unicorn = FigureConfig(top="standee", motif="unicorn")
     assert unicorn.color_key("motif") == "weiss"
     assert unicorn.color_key("details") == "anthrazit"  # a face stays visible on white
