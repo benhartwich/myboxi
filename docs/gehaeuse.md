@@ -138,6 +138,10 @@ Unter **app.myboxi.eu/gestalten/figur** („Figur gestalten“) entsteht ein Soc
 - Oberseite:
   - **Flach**, um eine vorhandene Figur daraufzukleben, etwa ein Spieltier. Am besten mit 2K-Kleber oder Sekundenkleber-Gel.
   - **Noppen** für Klemmbausteine: Eine Minifigur oder etwas Gebautes steckt direkt darauf. Die Noppen sitzen im üblichen 8-mm-Raster, als rechteckiger Block. Wie fest sie halten, regelt „Spiel für die Noppen“: weniger Spiel heißt dickere Noppen und festeren Halt.
+  - **Figur** aus unserer Sammlung: Bär, Katze, Hase, Frosch, Einhorn oder ein Männchen, etwa 5 cm hoch und 6 mm dick.
+    - Die Figur wird flach neben dem Sockel gedruckt, mit dem Gesicht nach oben; so wird die Vorderseite sauber und mehrfarbig.
+    - Danach steckt sie mit einem Steg in einem Schlitz des Sockels und wird dort festgeklebt.
+    - Zweifarbig druckt der Snapmaker U1 alles in einem Durchgang: Kopf 1 Sockel, Kopf 2 Name, Kopf 3 Figur, Kopf 4 Gesicht.
 - Name vorn auf dem Sockel, bis 10 Zeichen. Zweifarbig als Einlage, einfarbig graviert.
 - NFC-Chip: Münze oder Aufkleber, NTAG213 oder NTAG215, Ø 25 mm.
 

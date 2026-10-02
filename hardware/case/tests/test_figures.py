@@ -12,7 +12,7 @@ from xml.etree import ElementTree as ET
 import pytest
 from pydantic import ValidationError
 
-from myboxi_case import export, figures
+from myboxi_case import export, figures, geom, motifs
 from myboxi_case.checks import check_piece
 from myboxi_case.figures import FigureConfig, FigureError, build_figure
 from myboxi_case.geom import bbox, circle
@@ -100,7 +100,12 @@ def test_files_are_complete_and_reproducible() -> None:
         readme = zf.read("LIESMICH.txt").decode()
     stem = figures.file_stem(cfg)
     assert stem == "myboxi-figur-star-oemer"
-    assert {f"{stem}.3mf", f"stl/{stem}.stl", f"stl/{stem}-name.stl", "konfiguration.json"} <= names
+    assert {
+        f"{stem}.3mf",
+        f"stl/{stem}.stl",
+        f"stl/{stem}-details.stl",
+        "konfiguration.json",
+    } <= names
     assert "Druckpause bei 2,2 mm" in readme
     assert "NFC-Münze" in readme
 
@@ -119,3 +124,57 @@ def test_preview_uses_the_case_format() -> None:
     assert [m["key"] for m in info["meshes"]] == ["figure", "figure_inlay"]  # type: ignore[index]
     assert len(meshes) == 2
     assert figures.png(model)[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+# --- a figure from the collection, standing in the base ------------------------------------------
+
+
+@pytest.mark.parametrize("motif", motifs.MOTIFS)
+def test_every_figure_stands_in_every_base(motif: str) -> None:
+    for shape, size in itertools.product(SHAPES, (40, 50)):
+        cfg = FigureConfig.model_validate(
+            {"shape": shape, "size": size, "top": "standee", "motif": motif, "name": "Lotta"}
+        )
+        model = build_figure(cfg)
+        assert model.tile is not None
+        for piece in model.pieces:
+            assert check_piece(piece) == [], (cfg.query(), piece.key)
+        # the tab sits in the slot, the figure rests on the base, nothing overlaps
+        _, _, tz0, _, _, _ = bbox(model.tile.solid)
+        assert tz0 == pytest.approx(figures.HEIGHT - figures.SLOT_DEPTH + 0.2, abs=0.05)
+        assert (model.piece.solid ^ model.tile.solid).volume() < 1.0
+        # printed lying flat, front up: no supports, at most 6 mm high
+        flat = model.tile.printed(model.tile.solid)
+        assert bbox(flat)[5] == pytest.approx(figures.TILE)
+
+
+def test_figure_details_stay_inside_with_a_rim() -> None:
+    for motif in motifs.MOTIFS:
+        drawing = motifs.drawing(motif)
+        assert (drawing.details - drawing.outline.offset(-0.99)).area() < 1e-3, motif
+        assert len(drawing.outline.decompose()) == 1, motif
+        x0, y0, x1, _ = geom.bounds(drawing.outline)
+        assert y0 == pytest.approx(0.0)  # stands on the base
+        assert x1 - x0 <= 40.0  # fits the 40 mm base
+
+
+def test_a_figure_prints_with_four_colours_on_one_plate() -> None:
+    model = build_figure(FigureConfig(top="standee", motif="unicorn", shape="heart", name="Mia"))
+    with zipfile.ZipFile(io.BytesIO(figures.threemf(model))) as zf:
+        settings = ET.fromstring(zf.read("Metadata/model_settings.config"))  # noqa: S314
+        modelxml = zf.read("3D/3dmodel.model").decode()
+    extruders = {m.get("value") for m in settings.iter("metadata") if m.get("key") == "extruder"}
+    assert extruders == {"1", "2", "3", "4"}  # base, name, figure, face
+    assert modelxml.count("<item ") == 2  # base and figure, side by side
+    readme = zipfile.ZipFile(io.BytesIO(figures.bundle_zip(model))).read("LIESMICH.txt").decode()
+    assert "ZUSAMMENSETZEN" in readme
+    assert "Kopf 4 Gesicht" in readme
+    assert figures.title(model.config) == "Myboxi Figur Einhorn „Mia“"
+
+
+def test_the_figure_only_counts_for_standees() -> None:
+    assert FigureConfig(top="flat", motif="cat", color_motif="rot") == FigureConfig()
+    assert FigureConfig(top="standee", motif="cat").query() == {"top": "standee", "motif": "cat"}
+    unicorn = FigureConfig(top="standee", motif="unicorn")
+    assert unicorn.color_key("motif") == "weiss"
+    assert unicorn.color_key("details") == "anthrazit"  # a face stays visible on white

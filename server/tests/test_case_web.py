@@ -175,3 +175,22 @@ async def test_figures_and_boxes_link_to_the_figure_designer(
     await login(client, t.owner_email)
     assert 'href="/gestalten/figur"' in (await client.get(f"/t/{t.tenant_id}/figures")).text
     assert 'href="/gestalten/figur"' in (await client.get(f"/t/{t.tenant_id}/boxes")).text
+
+
+async def test_figure_from_the_collection(client: httpx.AsyncClient) -> None:
+    page = await client.get("/gestalten/figur?top=standee&motif=frog")
+    assert page.status_code == 200
+    assert 'name="motif" value="frog" checked' in page.text
+    assert 'data-show-when="top=standee" >' in page.text  # visible without JavaScript
+    assert "/static/figure/motif-frog.png?v=" in page.text
+    flat = await client.get("/gestalten/figur")
+    assert 'data-show-when="top=standee" hidden' in flat.text
+    r = await client.get("/gestalten/figur/vorschau?top=standee&motif=frog")
+    info, meshes = read_preview(r.content)
+    assert [m["key"] for m in info["meshes"]] == [  # type: ignore[index]
+        "figure", "figure_tile", "figure_tile_inlay",
+    ]  # fmt: skip
+    assert len(meshes) == 3
+    r = await client.get("/gestalten/figur/download.zip?top=standee&motif=frog&name=Ida")
+    names = zipfile.ZipFile(io.BytesIO(r.content)).namelist()
+    assert "stl/myboxi-figur-frog-ida-figur.stl" in names

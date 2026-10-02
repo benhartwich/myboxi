@@ -7,13 +7,17 @@
 <div class="case-head">
   <p class="eyebrow">Druckvorlage</p>
   <h1>Figur gestalten</h1>
-  <p class="muted">Ein Sockel mit eingebautem NFC-Chip macht jede Figur zur Box-Figur: eine Lieblingsfigur daraufkleben oder Klemmbausteine aufstecken. Form, Farben und Namen wählen, Druckdateien laden.</p>
+  <p class="muted">Ein Sockel mit eingebautem NFC-Chip macht jede Figur zur Box-Figur: eine Lieblingsfigur daraufkleben, Klemmbausteine aufstecken oder eine Figur aus unserer Sammlung wählen. Form, Farben und Namen wählen, Druckdateien laden.</p>
 </div>
 
 <div class="case">
   <section class="viewer" aria-label="Vorschau">
     <div class="viewer-stage" id="stage" data-preview="/gestalten/figur/vorschau">
+      {% if cfg.top == 'standee' %}
+      <img class="viewer-fallback" src="{{ asset('figure/motif-' ~ cfg.motif ~ '.png') }}" alt="Figur (Beispielbild)" width="480" height="360">
+      {% else %}
       <img class="viewer-fallback" src="{{ asset('figure/' ~ cfg.shape ~ '.png') }}" alt="{{ shape_label }} (Beispielbild)" width="480" height="360">
+      {% endif %}
       <p class="viewer-note" id="viewer-note" role="status" hidden></p>
     </div>
     <div class="viewer-tools js-only"><span class="muted viewer-hint">Ziehen zum Drehen</span></div>
@@ -22,7 +26,7 @@
   <form class="case-form" method="get" action="/gestalten/figur" id="case-form"
         data-defaults="{{ defaults_json }}" data-suggested="{{ suggested_json }}"
         data-page="/gestalten/figur" data-download="/gestalten/figur/download.zip"
-        data-suggest-by="shape" data-reframe="size,top">
+        data-suggest-by="shape,motif" data-reframe="size,top">
     <fieldset class="field">
       <legend>Form</legend>
       <div class="form-cards">
@@ -44,7 +48,20 @@
         <label class="choice" title="{{ text }}"><input type="radio" name="top" value="{{ key }}" {% if cfg.top == key %}checked{% endif %}><span>{{ label }}</span></label>
         {% endfor %}
       </div>
-      <span class="muted">Flach: eine Figur daraufkleben, z. B. ein Tier aus dem Kinderzimmer. Noppen: eine Minifigur oder etwas Gebautes aus Klemmbausteinen aufstecken.</span>
+      <span class="muted">Flach: eine Figur daraufkleben, z. B. ein Tier aus dem Kinderzimmer. Noppen: eine Minifigur oder etwas Gebautes aus Klemmbausteinen aufstecken. Figur: eine aus unserer Sammlung, flach gedruckt und in den Sockel gesteckt.</span>
+    </fieldset>
+
+    <fieldset class="field" data-show-when="top=standee" {% if cfg.top != 'standee' %}hidden{% endif %}>
+      <legend>Figur</legend>
+      <div class="form-cards">
+        {% for key, label in motifs %}
+        <label class="form-card">
+          <input type="radio" name="motif" value="{{ key }}" {% if cfg.motif == key %}checked{% endif %}>
+          <img src="{{ asset('figure/motif-' ~ key ~ '.png') }}" alt="" width="240" height="180" loading="lazy">
+          <strong>{{ label }}</strong>
+        </label>
+        {% endfor %}
+      </div>
     </fieldset>
 
     <fieldset class="field">
@@ -61,8 +78,8 @@
       <span class="muted">Bis {{ max_label }} Zeichen. Leer lassen geht auch.</span>
     </label>
 
-    {% for field, role, label in color_roles %}
-    <fieldset class="field">
+    {% for field, role, label, standee_only in color_roles %}
+    <fieldset class="field" {% if standee_only %}data-show-when="top=standee" {% if cfg.top != 'standee' %}hidden{% endif %}{% endif %}>
       <legend>Farbe {{ label }}</legend>
       <div class="swatches">
         {% for key, color in palette.items() %}

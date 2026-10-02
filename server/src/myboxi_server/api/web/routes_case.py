@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import PlainTextResponse, RedirectResponse, Response
 from pydantic import ValidationError
 
+from myboxi_case import motifs
 from myboxi_case.config import MAX_NAME, PALETTE, ROLES, SUGGESTED, CaseConfig
 from myboxi_case.export import file_stem
 from myboxi_case.figures import MAX_LABEL, FigureConfig, FigureError
@@ -195,8 +196,15 @@ FIGURE_SHAPES = (
 FIGURE_TOPS = (
     ("flat", "Flach", "Eine Figur daraufkleben, z. B. Tier- oder Spielfiguren."),
     ("bricks", "Noppen", "Für Klemmbausteine: Minifigur oder Gebautes aufstecken."),
+    ("standee", "Figur", "Eine Figur aus unserer Sammlung steckt im Sockel."),
 )
-FIGURE_COLOR_ROLES = (("color_base", "base", "Sockel"), ("color_accent", "accent", "Name"))
+# field, role, label, only for a figure from the collection
+FIGURE_COLOR_ROLES = (
+    ("color_base", "base", "Sockel", False),
+    ("color_accent", "accent", "Name", False),
+    ("color_motif", "motif", "Figur", True),
+    ("color_details", "details", "Gesicht", True),
+)
 
 
 def _figure_message(exc: ValidationError) -> str:
@@ -227,12 +235,14 @@ async def figure_page(
         "defaults_json": json.dumps(FigureConfig().model_dump(mode="json"), separators=(",", ":")),
         "suggested_json": json.dumps(
             {shape: {"color_base": base, "color_accent": accent}
-             for shape, (base, accent) in FIGURE_SUGGESTED.items()},
+             for shape, (base, accent) in FIGURE_SUGGESTED.items()}
+            | {motif: {"color_motif": colour} for motif, colour in motifs.COLOURS.items()},
             separators=(",", ":"),
         ),
-        "chosen": {"base": cfg.color_key("base"), "accent": cfg.color_key("accent")},
+        "chosen": {role: cfg.color_key(role) for role in ("base", "accent", "motif", "details")},
         "shapes": FIGURE_SHAPES,
         "shape_label": next(label for key, label, _ in FIGURE_SHAPES if key == cfg.shape),
+        "motifs": [(m, motifs.LABELS[m]) for m in motifs.MOTIFS],
         "tops": FIGURE_TOPS,
         "color_roles": FIGURE_COLOR_ROLES,
         "palette": PALETTE,
