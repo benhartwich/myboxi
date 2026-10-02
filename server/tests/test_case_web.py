@@ -159,7 +159,7 @@ async def test_figure_preview_and_download(client: httpx.AsyncClient) -> None:
     info, meshes = read_preview(r.content)
     assert info["version"] == "figure 1"
     assert len(meshes) == 1
-    r = await client.get("/gestalten/figur/download.zip?shape=round&name=Lotta")
+    r = await client.get("/gestalten/figur/download.zip?top=flat&shape=round&name=Lotta")
     assert r.status_code == 200
     assert r.headers["content-disposition"] == (
         'attachment; filename="myboxi-figur-round-lotta.zip"'
@@ -168,7 +168,7 @@ async def test_figure_preview_and_download(client: httpx.AsyncClient) -> None:
     assert "myboxi-figur-round-lotta.3mf" in archive.namelist()
     readme = archive.read("LIESMICH.txt").decode()
     assert "Druckpause bei 2,2 mm" in readme
-    assert "/gestalten/figur?name=Lotta" in readme
+    assert "/gestalten/figur?top=flat&name=Lotta" in readme
     too_long = await client.get("/gestalten/figur/vorschau?name=Maximiliane")
     assert too_long.status_code == 422
     assert "höchstens 10 Zeichen" in too_long.text
@@ -190,7 +190,11 @@ async def test_figure_from_the_collection(client: httpx.AsyncClient) -> None:
     assert 'name="motif" value="frog" checked' in page.text
     assert 'data-show-when="top=standee" >' in page.text  # visible without JavaScript
     assert "/static/figure/motif-frog.png?v=" in page.text
-    flat = await client.get("/gestalten/figur")
+    # the page starts with a figure, so the collection is the first thing to see
+    plain = await client.get("/gestalten/figur")
+    assert 'name="top" value="standee" checked' in plain.text
+    assert 'data-show-when="top=standee" >' in plain.text
+    flat = await client.get("/gestalten/figur?top=flat")
     assert 'data-show-when="top=standee" hidden' in flat.text
     r = await client.get("/gestalten/figur/vorschau?top=standee&motif=frog")
     info, meshes = read_preview(r.content)

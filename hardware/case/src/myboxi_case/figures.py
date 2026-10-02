@@ -108,7 +108,7 @@ class FigureConfig(BaseModel):
 
     shape: Shape = "round"
     size: Literal[40, 50] = 40
-    top: Top = "flat"
+    top: Top = "standee"  # the page is "Figur gestalten": a figure first
     # The standing figure (top == "standee"); otherwise dropped, so equal bases stay equal.
     motif: Motif | Literal["drawing"] = "bear"
     # motif == "drawing": the stored strokes (id from the upload) and how to turn them
@@ -131,7 +131,7 @@ class FigureConfig(BaseModel):
         if not isinstance(data, dict):
             return data
         values = cast(dict[str, object], data)
-        if values.get("top", "flat") != "standee":
+        if values.get("top", "standee") != "standee":
             dropped = ("motif", "color_motif", "color_details", "drawing", "turn")
             return {k: v for k, v in values.items() if k not in dropped}
         if values.get("motif", "bear") != "drawing":

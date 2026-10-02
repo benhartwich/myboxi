@@ -28,27 +28,17 @@
         data-page="/gestalten/figur" data-download="/gestalten/figur/download.zip"
         data-suggest-by="shape,motif" data-reframe="size,top">
     <fieldset class="field">
-      <legend>Form</legend>
+      <legend>Was kommt auf den Sockel?</legend>
       <div class="form-cards">
-        {% for key, label, text in shapes %}
+        {% for key, label, text, picture in tops %}
         <label class="form-card">
-          <input type="radio" name="shape" value="{{ key }}" {% if cfg.shape == key %}checked{% endif %}>
-          <img src="{{ asset('figure/' ~ key ~ '.png') }}" alt="" width="240" height="180" loading="lazy">
+          <input type="radio" name="top" value="{{ key }}" {% if cfg.top == key %}checked{% endif %}>
+          <img src="{{ asset('figure/' ~ picture ~ '.png') }}" alt="" width="240" height="180" loading="lazy">
           <strong>{{ label }}</strong>
           <span class="muted">{{ text }}</span>
         </label>
         {% endfor %}
       </div>
-    </fieldset>
-
-    <fieldset class="field">
-      <legend>Oberseite</legend>
-      <div class="choice-row">
-        {% for key, label, text in tops %}
-        <label class="choice" title="{{ text }}"><input type="radio" name="top" value="{{ key }}" {% if cfg.top == key %}checked{% endif %}><span>{{ label }}</span></label>
-        {% endfor %}
-      </div>
-      <span class="muted">Flach: eine Figur daraufkleben, z. B. ein Tier aus dem Kinderzimmer. Noppen: eine Minifigur oder etwas Gebautes aus Klemmbausteinen aufstecken. Figur: eine aus unserer Sammlung oder nach einer Kinderzeichnung, flach gedruckt und in den Sockel gesteckt.</span>
     </fieldset>
 
     <fieldset class="field" data-show-when="top=standee" {% if cfg.top != 'standee' %}hidden{% endif %}>
@@ -76,6 +66,20 @@
           </select>
         </label>
         {% endif %}
+      </div>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>Form des Sockels</legend>
+      <div class="form-cards">
+        {% for key, label, text in shapes %}
+        <label class="form-card">
+          <input type="radio" name="shape" value="{{ key }}" {% if cfg.shape == key %}checked{% endif %}>
+          <img src="{{ asset('figure/' ~ key ~ '.png') }}" alt="" width="240" height="180" loading="lazy">
+          <strong>{{ label }}</strong>
+          <span class="muted">{{ text }}</span>
+        </label>
+        {% endfor %}
       </div>
     </fieldset>
 
