@@ -227,6 +227,8 @@ async function refresh() {
   const suffix = q ? `?${q}` : '';
   history.replaceState(null, '', `${pagePath}${suffix}`);
   download.href = `${downloadPath}${suffix}`;
+  const drawingQuery = document.getElementById('drawing-query');
+  if (drawingQuery) drawingQuery.value = q;  // the photo upload keeps the other choices
   if (order) order.href = `/gestalten/anfrage${suffix}`;
   if (!renderer) return;
   pending?.abort();
@@ -239,12 +241,14 @@ async function refresh() {
       errorBox.textContent = text;
       errorBox.hidden = false;
       download.setAttribute('aria-disabled', 'true');
-      say('');
+      caseGroup.visible = false;  // never the previous choice next to an error
+      say(text);
       return;
     }
     errorBox.hidden = true;
     download.removeAttribute('aria-disabled');
     show(decode(await response.arrayBuffer()));
+    caseGroup.visible = true;
     say('');
   } catch (error) {
     if (error.name !== 'AbortError') say('Vorschau gerade nicht möglich.');
@@ -281,6 +285,16 @@ function showChoices() {
   }
 }
 showChoices();
+
+// A photo for "Eigene Zeichnung" is sent as soon as it is chosen.
+for (const input of document.querySelectorAll('input[type="file"][form]')) {
+  input.addEventListener('change', () => {
+    if (input.files.length) {
+      say('Zeichnung wird ausgewertet …');
+      input.form.requestSubmit();
+    }
+  });
+}
 
 for (const button of document.querySelectorAll('[data-toggle]')) {
   button.addEventListener('click', () => {

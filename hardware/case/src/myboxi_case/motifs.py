@@ -24,6 +24,7 @@ LABELS: dict[str, str] = {
     "frog": "Frosch",
     "unicorn": "Einhorn",
     "person": "Männchen",
+    "drawing": "Zeichnung",
 }
 # Suggested figure colour per motif (palette keys).
 COLOURS: dict[str, str] = {
@@ -33,6 +34,7 @@ COLOURS: dict[str, str] = {
     "frog": "moos",
     "unicorn": "weiss",
     "person": "himmel",
+    "drawing": "creme",  # light, so the strokes show
 }
 
 

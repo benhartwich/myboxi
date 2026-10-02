@@ -142,6 +142,12 @@ Unter **app.myboxi.eu/gestalten/figur** („Figur gestalten“) entsteht ein Soc
     - Die Figur wird flach neben dem Sockel gedruckt, mit dem Gesicht nach oben; so wird die Vorderseite sauber und mehrfarbig.
     - Danach steckt sie mit einem Steg in einem Schlitz des Sockels und wird dort festgeklebt.
     - Zweifarbig druckt der Snapmaker U1 alles in einem Durchgang: Kopf 1 Sockel, Kopf 2 Name, Kopf 3 Figur, Kopf 4 Gesicht.
+  - **Eigene Zeichnung:** Das Kind malt eine Figur, ihr ladet ein Foto davon hoch (JPEG, PNG oder WebP, bis 16 MB).
+    - Am besten mit dunklem Stift auf hellem Papier malen und gerade von oben fotografieren. Das Blatt darf am Rand angeschnitten sein; Tisch und Blattkante werden ignoriert.
+    - Der Server erkennt die Striche, füllt geschlossene Flächen und legt einen 2,5-mm-Rand um alles, wie bei einem ausgeschnittenen Aufkleber. Dünne Linien werden so druckbar, Spitzen rund. Die Striche selbst kommen als zweite Farbe auf die Vorderseite.
+    - Liegt das Foto quer, lässt sich die Zeichnung in 90°-Schritten drehen.
+    - Sind mehrere Dinge getrennt gemalt (eine Sonne neben dem Haus), wird nur das größte zur Figur, außer sie liegen nah genug beieinander.
+    - Das Foto wird nicht gespeichert, nur die erkannten Striche, 7 Tage lang. Danach muss man das Foto neu hochladen, um den Link wieder zu öffnen.
 - Name vorn auf dem Sockel, bis 10 Zeichen. Zweifarbig als Einlage, einfarbig graviert.
 - NFC-Chip: Münze oder Aufkleber, NTAG213 oder NTAG215, Ø 25 mm.
 

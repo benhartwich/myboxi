@@ -7,7 +7,7 @@
 <div class="case-head">
   <p class="eyebrow">Druckvorlage</p>
   <h1>Figur gestalten</h1>
-  <p class="muted">Ein Sockel mit eingebautem NFC-Chip macht jede Figur zur Box-Figur: eine Lieblingsfigur daraufkleben, Klemmbausteine aufstecken oder eine Figur aus unserer Sammlung wählen. Form, Farben und Namen wählen, Druckdateien laden.</p>
+  <p class="muted">Ein Sockel mit eingebautem NFC-Chip macht jede Figur zur Box-Figur: eine Lieblingsfigur daraufkleben, Klemmbausteine aufstecken, eine Figur aus unserer Sammlung wählen oder die Zeichnung eures Kindes zur Figur machen. Form, Farben und Namen wählen, Druckdateien laden.</p>
 </div>
 
 <div class="case">
@@ -48,7 +48,7 @@
         <label class="choice" title="{{ text }}"><input type="radio" name="top" value="{{ key }}" {% if cfg.top == key %}checked{% endif %}><span>{{ label }}</span></label>
         {% endfor %}
       </div>
-      <span class="muted">Flach: eine Figur daraufkleben, z. B. ein Tier aus dem Kinderzimmer. Noppen: eine Minifigur oder etwas Gebautes aus Klemmbausteinen aufstecken. Figur: eine aus unserer Sammlung, flach gedruckt und in den Sockel gesteckt.</span>
+      <span class="muted">Flach: eine Figur daraufkleben, z. B. ein Tier aus dem Kinderzimmer. Noppen: eine Minifigur oder etwas Gebautes aus Klemmbausteinen aufstecken. Figur: eine aus unserer Sammlung oder nach einer Kinderzeichnung, flach gedruckt und in den Sockel gesteckt.</span>
     </fieldset>
 
     <fieldset class="field" data-show-when="top=standee" {% if cfg.top != 'standee' %}hidden{% endif %}>
@@ -61,6 +61,21 @@
           <strong>{{ label }}</strong>
         </label>
         {% endfor %}
+      </div>
+      <div class="stack" data-show-when="motif=drawing" {% if cfg.motif != 'drawing' %}hidden{% endif %}>
+        <label>Foto der Zeichnung
+          <input type="file" name="file" form="drawing-form" accept="image/jpeg,image/png,image/webp" required>
+        </label>
+        <button type="submit" form="drawing-form" class="secondary">Zeichnung hochladen</button>
+        <span class="muted">Mit dunklem Stift auf hellem Papier malen, gerade von oben und bildfüllend fotografieren. Das Foto wird nur ausgewertet, nicht gespeichert. Wir behalten nur die erkannten Striche, 7 Tage lang, damit Vorschau und Link funktionieren.</span>
+        {% if cfg.drawing %}
+        <input type="hidden" name="drawing" value="{{ cfg.drawing }}">
+        <label>Drehen
+          <select name="turn">
+            {% for t, label in ((0, "nicht drehen"), (90, "90° nach rechts"), (180, "auf den Kopf"), (270, "90° nach links")) %}<option value="{{ t }}" {% if cfg.turn == t %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </label>
+        {% endif %}
       </div>
     </fieldset>
 
@@ -117,6 +132,10 @@
     </details>
 
     <button type="submit" class="secondary no-js-only">Vorschau aktualisieren</button>
+  </form>
+  <form id="drawing-form" method="post" action="/gestalten/figur/zeichnung" enctype="multipart/form-data" hidden>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="query" id="drawing-query" value="{{ query }}">
   </form>
 </div>
 

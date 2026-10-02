@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 
 from procrastinate import JobContext, builtin_tasks
 
+from myboxi_server.domain import drawings
 from myboxi_server.domain.assets import collect_garbage
 from myboxi_server.domain.retention import purge_expired, purge_tmp_files
 from myboxi_server.jobs.app import job_app
@@ -22,6 +24,7 @@ async def purge_expired_task(timestamp: int) -> None:
         counts = await purge_expired(db)
         await db.commit()
         counts["tmp_files"] = await purge_tmp_files(db, job_settings().tmp_dir)
+    counts["drawings"] = await asyncio.to_thread(drawings.purge, job_settings().data_dir)
     counts["assets"] = await collect_garbage(job_sessionmaker(), job_store())
     log.info("purged expired rows", extra={"counts": counts, "scheduled_at": timestamp})
 

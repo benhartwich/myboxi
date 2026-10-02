@@ -24,11 +24,12 @@ from pydantic import (
     BeforeValidator,
     ConfigDict,
     Field,
+    StringConstraints,
     field_validator,
     model_validator,
 )
 
-from myboxi_case import export, motifs, patterns, text
+from myboxi_case import export, motifs, patterns, text, trace
 from myboxi_case.build import Piece
 from myboxi_case.config import PALETTE, ColorKey, Colors
 from myboxi_case.geom import (
@@ -109,7 +110,10 @@ class FigureConfig(BaseModel):
     size: Literal[40, 50] = 40
     top: Top = "flat"
     # The standing figure (top == "standee"); otherwise dropped, so equal bases stay equal.
-    motif: Motif = "bear"
+    motif: Motif | Literal["drawing"] = "bear"
+    # motif == "drawing": the stored strokes (id from the upload) and how to turn them
+    drawing: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{16}$")] | None = None
+    turn: Literal[0, 90, 180, 270] = 0
     name: Annotated[
         str, BeforeValidator(_squash), Field(max_length=MAX_LABEL), AfterValidator(_label)
     ] = ""
@@ -127,11 +131,12 @@ class FigureConfig(BaseModel):
         if not isinstance(data, dict):
             return data
         values = cast(dict[str, object], data)
-        if values.get("top", "flat") == "standee":
-            return values
-        return {
-            k: v for k, v in values.items() if k not in ("motif", "color_motif", "color_details")
-        }
+        if values.get("top", "flat") != "standee":
+            dropped = ("motif", "color_motif", "color_details", "drawing", "turn")
+            return {k: v for k, v in values.items() if k not in dropped}
+        if values.get("motif", "bear") != "drawing":
+            return {k: v for k, v in values.items() if k not in ("drawing", "turn")}
+        return values
 
     @field_validator("tolerance")
     @classmethod
@@ -142,7 +147,7 @@ class FigureConfig(BaseModel):
     def from_query(cls, query: Mapping[str, str]) -> Self:
         data: dict[str, object] = {}
         for key, value in query.items():
-            if key == "size":
+            if key in ("size", "turn"):
                 data[key] = int(value) if value.isdigit() else value
             elif key == "tolerance":
                 try:
@@ -251,10 +256,18 @@ def _slot_y(top_face: CrossSection, label: CrossSection, half_w: float, half_t: 
     )
 
 
-def _tile(cfg: FigureConfig) -> tuple[Manifold, Manifold, Manifold]:
+def _tile(cfg: FigureConfig, strokes: trace.Rings | None) -> tuple[Manifold, Manifold, Manifold]:
     """The standing figure in print orientation (lying on its back, front up): solid, details
     as inlay (two colours) and the cut for them."""
-    drawing = motifs.drawing(cfg.motif)
+    if cfg.motif == "drawing":
+        if not strokes:
+            raise FigureError("Bitte zuerst eine Zeichnung hochladen.")
+        try:
+            drawing = trace.drawing(strokes, cfg.turn)
+        except trace.TraceError as exc:
+            raise FigureError(str(exc)) from exc
+    else:
+        drawing = motifs.drawing(cfg.motif)
     tab = rect(-TAB_WIDTH / 2, -(SLOT_DEPTH - 0.2), TAB_WIDTH / 2, 1.0)
     outline = section_union([drawing.outline, tab])
     solid = _rounded_slab(outline, TILE)
@@ -330,8 +343,9 @@ def _studs(region: CrossSection, keep_out: CrossSection, r: float) -> list[tuple
     return best
 
 
-def build_figure(cfg: FigureConfig) -> FigureModel:
-    """Raises FigureError for choices that do not fit."""
+def build_figure(cfg: FigureConfig, strokes: trace.Rings | None = None) -> FigureModel:
+    """Raises FigureError for choices that do not fit. ``strokes``: the uploaded drawing
+    (trace.ink) when ``cfg.motif == "drawing"``."""
     tag_d, tag_t, _ = TAGS[cfg.tag]
     pocket_r = tag_d / 2 + cfg.tolerance
     pocket_z1 = SKIN + tag_t + (0.2 if cfg.tag == "coin" else 0.1)
@@ -369,7 +383,7 @@ def build_figure(cfg: FigureConfig) -> FigureModel:
         y_slot = _slot_y(top_face, label, half_w, half_t)
         body = body - box(-half_w, y_slot - half_t, HEIGHT - SLOT_DEPTH,
                           half_w, y_slot + half_t, HEIGHT + 0.01)  # fmt: skip
-        flat, details, _ = _tile(cfg)
+        flat, details, _ = _tile(cfg, strokes)
 
         # Standing in the slot: rotate((90, 0, 0)) turns y (up in the drawing) into z and the
         # front (z = TILE) towards the viewer (-y).
@@ -420,6 +434,8 @@ SHAPE_LABELS = {"round": "rund", "square": "eckig", "heart": "Herz", "star": "St
 
 def title(cfg: FigureConfig) -> str:
     name = f" „{cfg.name}“" if cfg.name else ""
+    if cfg.top == "standee" and cfg.motif == "drawing":
+        return f"Myboxi Figur aus einer Zeichnung{name}"
     if cfg.top == "standee":
         return f"Myboxi Figur {motifs.LABELS[cfg.motif]}{name}"
     return f"Myboxi Figurensockel {SHAPE_LABELS[cfg.shape]}{name}"

@@ -18,6 +18,7 @@ from myboxi_case.build import build
 from myboxi_case.config import CaseConfig
 from myboxi_case.figures import FigureConfig, FigureError, build_figure
 from myboxi_case.layout import LayoutError
+from myboxi_case.trace import Rings
 
 Kind = Literal["preview", "bundle", "figure_preview", "figure_bundle"]
 Make = Callable[[], bytes]
@@ -44,18 +45,21 @@ class CaseBuilds:
         """The ZIP with 3MF, STL and instructions; raises LayoutError."""
         return await self._get("bundle", cfg, lambda: export.bundle_zip(build(cfg), url))
 
-    async def figure_preview(self, cfg: FigureConfig) -> bytes:
-        """ "Figur gestalten": the gzip-compressed preview mesh; raises FigureError."""
+    async def figure_preview(self, cfg: FigureConfig, strokes: Rings | None = None) -> bytes:
+        """Figur gestalten: the gzip-compressed preview mesh; raises FigureError.
+        ``strokes``: the uploaded drawing (part of the digest through its id)."""
         return await self._get(
             "figure_preview",
             cfg,
-            lambda: gzip.compress(figures.preview(build_figure(cfg)), 6, mtime=0),
+            lambda: gzip.compress(figures.preview(build_figure(cfg, strokes)), 6, mtime=0),
         )
 
-    async def figure_bundle(self, cfg: FigureConfig, url: str) -> bytes:
+    async def figure_bundle(
+        self, cfg: FigureConfig, url: str, strokes: Rings | None = None
+    ) -> bytes:
         """The ZIP with 3MF (print pause for the chip), STL and instructions."""
         return await self._get(
-            "figure_bundle", cfg, lambda: figures.bundle_zip(build_figure(cfg), url)
+            "figure_bundle", cfg, lambda: figures.bundle_zip(build_figure(cfg, strokes), url)
         )
 
     async def _get(self, kind: Kind, cfg: CaseConfig | FigureConfig, make: Make) -> bytes:
