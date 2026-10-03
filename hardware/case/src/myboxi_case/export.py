@@ -241,10 +241,20 @@ def _zip(entries: Iterable[tuple[str, str | bytes]]) -> bytes:
     return buf.getvalue()
 
 
+FORM_LABELS: dict[str, str] = {
+    "radio": "Radio",
+    "cube": "Würfel",
+    "bear": "Bär",
+    "unicorn": "Einhorn",
+    "cat": "Katze",
+    "bunny": "Hase",
+    "frog": "Frosch",
+}
+
+
 def title(cfg: CaseConfig) -> str:
-    forms = {"radio": "Radio", "cube": "Würfel", "bear": "Bär"}
     name = f" „{cfg.name}“" if cfg.name else ""
-    return f"Myboxi {forms[cfg.form]}{name}"
+    return f"Myboxi {FORM_LABELS[cfg.form]}{name}"
 
 
 def file_stem(cfg: CaseConfig) -> str:
