@@ -146,6 +146,9 @@ class FakeSoloist:
                 await self._send({"type": "playback_changed", "status": "paused"})
             case "skip_next":
                 await self._advance()
+            case "skip_prev":
+                self.index = max(0, self.index - 1)
+                await self._send({"type": "track_changed", "item": self.current()}, self._queue())
             case "seek":
                 position = {"position_ms": msg["position_ms"], "timestamp_ms": 0, "speed": 1.0}
                 await self._send({"type": "position_sync", "position": position})
@@ -303,6 +306,33 @@ async def test_index_follows_the_tracks(rig: Rig) -> None:
     pos = rig.player.position()
     assert pos is not None
     assert (pos.item_index, pos.item_key) == (2, track(2)["uri"])
+
+
+async def test_index_counts_back_after_skip_prev(rig: Rig) -> None:
+    """SPEC v0.15 §8.1: ``next`` held sends ``skip_prev``, or ``seek`` to 0 after 3 s."""
+    rig.player.play_context(ALBUM, ResumePoint(0, 0), False, "off")
+    await settle()
+    for _ in range(3):
+        await rig.soloist.track_ends()
+    await settle()
+    rig.soloist.commands.clear()
+    rig.player.skip_back(restart=False)
+    await settle()
+    assert rig.soloist.names() == ["skip_prev"]
+    pos = rig.player.position()
+    assert pos is not None
+    assert (pos.item_index, pos.item_key) == (2, track(2)["uri"])
+    rig.player.skip_back(restart=True)
+    await settle()
+    assert rig.soloist.sent("seek")[-1]["position_ms"] == 0
+    pos = rig.player.position()
+    assert pos is not None
+    assert pos.item_index == 2
+    await rig.soloist.track_ends()  # the following title counts forward again
+    await settle()
+    pos = rig.player.position()
+    assert pos is not None
+    assert (pos.item_index, pos.item_key) == (3, track(3)["uri"])
 
 
 async def test_autoplay_after_the_last_title_ends_the_content(rig: Rig) -> None:

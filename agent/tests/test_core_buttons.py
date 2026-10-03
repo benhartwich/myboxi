@@ -64,3 +64,36 @@ def test_short_combo_press_does_nothing() -> None:
     assert t.tick() == []
     assert t.release("play_pause") == []
     assert t.release("next") == []
+
+
+def test_next_held_goes_back() -> None:
+    """SPEC v0.15 §9.4: ``next`` held for a second goes back, on release."""
+    clock = FakeClock()
+    t = ButtonTracker(clock)
+    t.press("next")
+    clock.advance(0.9)
+    assert t.tick() == []
+    assert t.release("next") == [Action.NEXT]
+    t.press("next")
+    clock.advance(1.0)
+    assert t.tick() == []  # nothing while held: it could still become the combination
+    assert t.release("next") == [Action.PREVIOUS]
+
+
+def test_play_pause_held_is_still_play_pause() -> None:
+    clock = FakeClock()
+    t = ButtonTracker(clock)
+    t.press("play_pause")
+    clock.advance(2)
+    assert t.release("play_pause") == [Action.PLAY_PAUSE]
+
+
+def test_held_next_in_the_repair_combination_does_not_go_back() -> None:
+    clock = FakeClock()
+    t = ButtonTracker(clock)
+    t.press("next")
+    clock.advance(0.5)
+    t.press("play_pause")
+    clock.advance(2)
+    assert t.release("play_pause") == []
+    assert t.release("next") == []

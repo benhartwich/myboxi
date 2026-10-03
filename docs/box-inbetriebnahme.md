@@ -58,6 +58,8 @@ Neu koppeln (z. B. für einen anderen Haushalt): **`play_pause` + `next` 5 Sekun
 2. In der Web-UI unter **Figuren → Unbekannte Figuren** mit „Übernehmen“ anlegen, einen Inhalt zuordnen.
 3. Nach einer unbekannten Figur fragt die Box 10 Minuten lang alle 30 Sekunden beim Server nach, sonst alle 15 Minuten. Sie lädt die Dateien vollständig. Danach spielt die Figur auch ohne Internet. Die Figur einfach noch einmal auflegen.
 
+Tasten beim Hören: **`play_pause`** hält an und spielt weiter, **`volume_up`**/**`volume_down`** ändern die Lautstärke. **`next`** springt zum nächsten Titel; **1 Sekunde gehalten** geht es zurück, zum vorherigen Titel oder, wenn der Titel schon ein paar Sekunden lief, an seinen Anfang.
+
 ## 7. Podcasts
 
 1. In der Web-UI unter **Inhalte → Podcast** die Feed-Adresse eintragen (RSS oder Atom, `https://…`) und festlegen, wie viele der neuesten Folgen auf die Box sollen.
@@ -73,7 +75,7 @@ Gut zu wissen:
 
 ## 8. Radio
 
-Unter **Inhalte → Radio** die Stream-Adresse eines Senders eintragen (`https://…`, auch `.m3u` oder `.pls`) und einer Figur zuordnen. Radio spielt nur mit Internet und immer live; die Weiter-Taste hat hier keinen nächsten Titel. Radio ist auf jeder Box eingeschaltet und lässt sich auf der Box-Seite unter **Quellen** abschalten.
+Unter **Inhalte → Radio** die Stream-Adresse eines Senders eintragen (`https://…`, auch `.m3u` oder `.pls`) und einer Figur zuordnen. Radio spielt nur mit Internet und immer live; die Weiter-Taste hat hier keinen nächsten und keinen vorherigen Titel. Radio ist auf jeder Box eingeschaltet und lässt sich auf der Box-Seite unter **Quellen** abschalten.
 
 ## 9. Von vorn oder ab einem bestimmten Titel
 
@@ -100,7 +102,7 @@ Einrichten:
 Suchen in der App: Unter **Inhalte → Spotify → „Spotify verbinden“** führt die App einmal durch die Einrichtung einer eigenen Spotify-App im [Spotify-Entwicklerportal](https://developer.spotify.com/dashboard), mit Premium-Konto, Redirect URI `https://app.myboxi.eu/spotify/callback`, Häkchen bei „Web API“. Danach die Client-ID eintragen und verbinden. Dann gibt es eine Suche, „Meine Playlists“ und „Meine Alben“; Titel und Cover kommen von Spotify. Das geht mit demselben Entwicklerkonto wie der Spotify-Schlüssel der Box.
 
 So verhält sich die Box:
-- Figur auflegen: Das Album spielt, beim nächsten Mal an derselben Stelle weiter. Die Weiter-Taste springt zum nächsten Titel.
+- Figur auflegen: Das Album spielt, beim nächsten Mal an derselben Stelle weiter. Die Weiter-Taste springt zum nächsten Titel, gehalten zurück.
 - Ist das Album zu Ende, hält die Box an. Titel, die Spotify von selbst anhängt (Autoplay), spielt sie nicht.
 - Titel mit Explicit-Kennzeichnung überspringt die Box, außer ihr erlaubt sie auf der Box-Seite.
 - Aus der Spotify-App lässt sich die Box wie ein Lautsprecher nutzen. Höchstlautstärke, Ruhezeiten und Einschlaf-Timer gelten trotzdem. Legt jemand eine Figur auf, hat die Figur Vorrang.
@@ -120,7 +122,7 @@ Ab Image 0.3.0 aktualisiert sich die Box selbst, sobald sie online ist, aber nie
 - [ ] Kopplungscode wird angesagt, Box erscheint in der Web-UI
 - [ ] Unbekannte Figur: Ansage, Figur taucht unter „Unbekannte Figuren“ auf
 - [ ] Figur mit Inhalt: Start-Ton, Wiedergabe über den Lautsprecher
-- [ ] Tasten: Pause/Weiter, lauter/leiser, nächster Titel; nie lauter als die Höchstlautstärke der Box
+- [ ] Tasten: Pause/Weiter, lauter/leiser, nächster Titel, Weiter-Taste 1 s halten für zurück; nie lauter als die Höchstlautstärke der Box
 - [ ] Figur abnehmen und wieder auflegen: spielt an der gleichen Stelle weiter
 - [ ] Stecker ziehen, wieder einstecken, Figur auflegen: spielt an der gleichen Stelle weiter
 - [ ] In der Web-UI unter Boxen: „zuletzt gemeldet“ und Wiedergabestatus aktuell

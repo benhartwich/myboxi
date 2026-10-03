@@ -171,6 +171,12 @@ class SimSpotify:
         if self.on_playlist_finished is not None:
             self.on_playlist_finished()
 
+    def skip_back(self, restart: bool) -> None:
+        if not restart:
+            self.index = max(0, self.index - 1)
+        self._base_ms, self._since = 0, time.monotonic()
+        log.info("spotify back", extra={"track": self.index, "restart": restart})
+
     def pause(self) -> None:
         self._base_ms, self.state = self._pos_ms(), "paused"
         log.info("spotify pause")

@@ -183,6 +183,17 @@ def test_radio_next_has_no_next_title() -> None:
     assert player.state == "playing"
 
 
+def test_radio_has_no_title_before() -> None:
+    """SPEC v0.15 §8.3: live, also ``next`` held only beeps."""
+    ctl, (player, announcer, _) = controller(radio())
+    ctl.token_placed(UID)
+    player.position_ms = 60_000
+    calls = list(player.calls)
+    ctl.button(Action.PREVIOUS)
+    assert announcer.said[-1] == (Prompt.TONE_ERROR,)
+    assert player.calls == calls
+
+
 def test_radio_offline_says_so() -> None:
     plan = radio()
     ctl, (_, announcer, outbox) = controller(plan)

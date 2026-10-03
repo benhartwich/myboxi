@@ -59,6 +59,12 @@ class FakePlayer:
         self.position_ms = 0
         self.calls.append("skip")
 
+    def skip_back(self, restart: bool) -> None:
+        if not restart:
+            self.index = max(0, self.index - 1)
+        self.position_ms = 0
+        self.calls.append("restart" if restart else "skip_back")
+
     def pause(self) -> None:
         self.state = "paused"
         self.calls.append("pause")
