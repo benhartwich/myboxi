@@ -16,15 +16,17 @@ from myboxi_case import figures, figures3d, motifs
 from myboxi_case.build import Piece
 from myboxi_case.checks import _overhangs, check_piece  # pyright: ignore[reportPrivateUsage]
 from myboxi_case.figures import FigureConfig, build_figure
-from myboxi_case.geom import bbox, bounds, union
+from myboxi_case.geom import bbox, bounds, box, union
 
 SHAPES = ("round", "square", "heart", "star")
 
 
 def islands(m: Manifold, step: float = 0.2) -> list[tuple[float, float, float]]:
     """Layers that start in mid-air: farther than a quarter millimetre from the layer below
-    (a printed line holds on to its neighbour that far)."""
-    _, _, z0, _, _, z1 = bbox(m)
+    (a printed line holds on to its neighbour that far). The base's top carries everything
+    at z = 0."""
+    x0, y0, z0, x1, y1, z1 = bbox(m)
+    m = m + box(x0 - 1, y0 - 1, -figures3d.ROOT, x1 + 1, y1 + 1, 0.0)
     found: list[tuple[float, float, float]] = []
     below = m.slice(z0 + 0.05)
     z = z0 + step
@@ -41,7 +43,7 @@ def islands(m: Manifold, step: float = 0.2) -> list[tuple[float, float, float]]:
 
 @pytest.mark.parametrize(("motif", "size"), list(itertools.product(motifs.MOTIFS, (40, 50))))
 def test_every_figure_prints_without_supports(motif: motifs.Motif, size: int) -> None:
-    fig = figures3d.figure(motif, size / 40)
+    fig = figures3d.figure(motif, figures.FIGURE_SCALE[size])
     whole = union([fig.body, fig.accent, fig.details])
     assert len([p for p in whole.decompose() if p.volume() > 1.0]) == 1
     # no face steeper than 45° that is wider than a printed line, nothing in mid-air
@@ -69,8 +71,8 @@ def test_every_figure_stands_on_every_base(motif: str) -> None:
         )  # fmt: skip
         assert check_piece(printed) == [], (cfg.query(), check_piece(printed))
         # the figure stands on the flat top of the base, the name in front of its feet
-        root = figures3d.ROOT * size / 40  # reaches into the base: one solid when printed
-        assert bbox(figure)[2] == pytest.approx(figures.HEIGHT - root)
+        # reaches into the base (scaled with the figure, a little smaller on a star)
+        assert figures.HEIGHT - 0.5 < bbox(figure)[2] < figures.HEIGHT - 0.3
         feet = figure.slice(figures.HEIGHT + 0.1)
         assert (feet - model.outline.offset(-2.4)).area() < 1e-3
         assert bounds(model.label)[3] < bounds(feet)[1] - 1.0
@@ -109,7 +111,7 @@ def test_a_larger_base_carries_a_larger_figure() -> None:
     small = union([e.solid for e in build_figure(FigureConfig(motif="cat")).extras])
     large = union([e.solid for e in build_figure(FigureConfig(motif="cat", size=50)).extras])
     assert bbox(large)[5] - bbox(large)[2] == pytest.approx(
-        1.25 * (bbox(small)[5] - bbox(small)[2]), rel=0.01
+        figures.FIGURE_SCALE[50] * (bbox(small)[5] - bbox(small)[2]), rel=0.01
     )
 
 
@@ -120,4 +122,4 @@ def test_colours_and_choices() -> None:
     with pytest.raises(ValidationError, match="nur als Aufsteller"):
         FigureConfig(motif="drawing", drawing="0123456789abcdef")
     with pytest.raises(figures.FigureError, match="passt nicht vor diese Figur"):
-        build_figure(FigureConfig(shape="heart", size=50, name="Maximilian"))
+        build_figure(FigureConfig(shape="star", size=40, name="Maximilian"))

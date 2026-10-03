@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from myboxi_case import figures3d
 from myboxi_server.api.device import claim as device_claim
 from myboxi_server.api.device import router as device_router
 from myboxi_server.api.device.errors import ApiError, code_for_status, error_response
@@ -230,6 +231,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.update_channel = UpdateChannel(settings.update_manifest_url)
     app.state.case_builds = CaseBuilds(settings.case_cache_mb * 1024 * 1024)
+    figures3d.CACHE_DIR = settings.data_dir / "figures3d"  # built once, then loaded (s)
     app.state.asset_store = FilesystemAssetStore(settings.asset_dir, settings.accel_redirect_prefix)
     app.state.spotify = SpotifyWeb()
     app.add_middleware(AccessLogMiddleware)
