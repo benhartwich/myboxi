@@ -30,6 +30,10 @@ class Piece:
     inlay: Manifold = field(default_factory=Manifold)
     inlay_color: str = ""
     inlay_tool: int = TOOL_ACCENT
+    # Coloured fields set into the body's faces (the front's colour), a second inlay.
+    panel: Manifold = field(default_factory=Manifold)
+    panel_color: str = ""
+    panel_tool: int = TOOL_FRONT
 
     def printed(self, m: Manifold) -> Manifold:
         """``m`` (this piece or its inlay) turned into print orientation, resting on z=0."""
@@ -66,10 +70,11 @@ def build(cfg: CaseConfig) -> CaseModel:
         rotation: tuple[float, float, float],
         explode: tuple[float, float, float],
     ) -> Piece:
-        if multi and not shape.inlay.is_empty():
+        if multi:
             return Piece(
-                key, label, shape.solid, color, tool, rotation, explode, shape.inlay, accent_c
-            )
+                key, label, shape.solid, color, tool, rotation, explode, shape.inlay, accent_c,
+                panel=shape.panel, panel_color=front_c,
+            )  # fmt: skip
         # Single colour: the engraving stays empty, readable by its shadow.
         return Piece(key, label, shape.solid, color, tool, rotation, explode)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from typing import Literal
 
 from manifold3d import CrossSection
 
@@ -106,3 +107,24 @@ def grille(kind: Grille, radius: float) -> CrossSection:
                 if half > 4:
                     slots.append(rounded_rect(-half, y - 1.5, half, y + 1.5, 1.5))
             return section_union(slots)
+
+
+def note(kind: Literal["eighth", "beamed"]) -> CrossSection:
+    """A music note, about 10 mm tall, for the corners of the front (base line at y = 0)."""
+
+    def head(x: float, y: float) -> CrossSection:
+        return CrossSection.circle(1.0, 24).scale((2.4, 1.75)).rotate(-22.0).translate((x, y))
+
+    def bar(x0: float, y0: float, x1: float, y1: float, w: float) -> CrossSection:
+        return CrossSection.batch_hull(
+            [CrossSection.circle(w / 2, 12).translate((x0, y0)),
+             CrossSection.circle(w / 2, 12).translate((x1, y1))]
+        )  # fmt: skip
+
+    if kind == "eighth":
+        parts = [head(0, 1.8), bar(2.05, 2.2, 2.05, 11.5, 1.0), bar(2.05, 11.5, 5.0, 8.4, 1.1),
+                 bar(5.0, 8.4, 4.4, 6.0, 0.9)]  # fmt: skip
+    else:
+        parts = [head(0, 1.8), head(6.4, 3.0), bar(2.05, 2.2, 2.05, 11.5, 1.0),
+                 bar(8.45, 3.4, 8.45, 12.7, 1.0), bar(2.05, 11.0, 8.45, 12.2, 1.9)]  # fmt: skip
+    return section_union(parts)

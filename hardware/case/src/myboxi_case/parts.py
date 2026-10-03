@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from manifold3d import CrossSection, Manifold
 
@@ -31,12 +31,15 @@ from myboxi_case.geom import (
     section_union,
     union,
     xz_slab,
+    yz_slab,
 )
 from myboxi_case.layout import (
     BASE,
     BOTTOM_ROUND,
     COLUMN_R,
     ENGRAVE,
+    FIELD_R,
+    FRAME,
     PANEL_T,
     RAIL_OVERLAP,
     RAIL_T,
@@ -58,6 +61,7 @@ PILOT_M3 = {"self_tap": 1.25, "insert": 2.0}  # radius: self-tapping M3, or M3 h
 PILOT_M25 = {"self_tap": 1.1, "insert": 1.75}
 EAR_T = 5.0
 EAR_ROUND = 2.0
+DIMPLE = 1.2  # depth of the grille's dimples beyond the speaker
 EAR_TENON = (16.0, 4.6, 6.0)  # width, thickness, depth below the top
 
 
@@ -65,6 +69,7 @@ EAR_TENON = (16.0, 4.6, 6.0)  # width, thickness, depth below the top
 class Shape:
     solid: Manifold
     inlay: Manifold  # engraved areas, for a second colour (empty if none)
+    panel: Manifold = field(default_factory=Manifold)  # coloured fields (the front's colour)
 
 
 class Geometry:
@@ -119,7 +124,9 @@ def body(g: Geometry) -> Shape:
     lay, tol = g.lay, g.tol
     top = lay.height - TOP
     outer = g.outer_solid
-    shell = outer - prism(g.inner, -1.0, top)
+    # The inside follows the rounded top edge, so the wall keeps its thickness along it.
+    cavity = rounded_prism(g.inner, top + 1.0, TOP_ROUND - WALL).translate((0, 0, -1.0))
+    shell = outer - cavity
 
     # U-shaped window, open at the bottom: nothing to bridge when printed upside down.
     wx0, wx1 = lay.window_x
@@ -179,8 +186,48 @@ def body(g: Geometry) -> Shape:
     marks = [circle(RING_R + RING_W / 2, fx, fy) - circle(RING_R - RING_W / 2, fx, fy)]
     for b in lay.buttons:
         marks.append(patterns.symbol(SYMBOLS[b.action]).translate((b.x, b.y + b.symbol_dy)))
-    inlay = _engrave_top(g, section_union(marks)) ^ outer
-    return Shape(shell - inlay, inlay)
+    marks_top = section_union(marks)
+    inlay = _engrave_top(g, marks_top) ^ outer
+    panel = _fields(g, marks_top) ^ outer
+    return Shape(shell - inlay - panel, inlay, panel)
+
+
+def _rounded_field(x0: float, y0: float, x1: float, y1: float) -> CrossSection:
+    return rounded_rect(x0, y0, x1, y1, FIELD_R)
+
+
+def _fields(g: Geometry, marks_top: CrossSection) -> Manifold:
+    """Coloured fields set into the top and the side and back walls, inside a frame of the
+    body's colour (FRAME from the edge), like panels in a wooden frame. They leave out every
+    hole, slot and mark, with a gap of the body's colour around them."""
+    lay, tol = g.lay, g.tol
+    keep = [marks_top.offset(0.8)]
+    keep += [circle(g.cfg.button / 2 + tol + 1.2, b.x, b.y) for b in lay.buttons]
+    if lay.character is not None:
+        tw = characters.topper(lay.character).tenon
+        for ex, ey in ear_positions(lay):
+            ty0 = ey - EAR_T / 2
+            keep.append(
+                rect(ex - tw / 2 - 1.5, ty0 - 1.5, ex + tw / 2 + 1.5, ty0 + EAR_TENON[1] + 1.5)
+            )
+    if lay.character == "unicorn":
+        hx, hy = horn_position(lay)
+        keep.append(circle(HORN_R + 1.0, hx, hy))
+    top_field = g.outline.offset(-FRAME - FIELD_R).offset(FIELD_R) - section_union(keep)
+    fields = [_engrave_top(g, top_field)]
+
+    z0, z1 = FRAME, lay.height - TOP_ROUND - 1.0  # the walls: above the foot, below the round
+    side = _rounded_field(max(lay.r_front, FRAME), z0, lay.depth - max(lay.r_back, FRAME), z1)
+    fields.append(yz_slab(side, -0.01, ENGRAVE))
+    fields.append(yz_slab(side, lay.width - ENGRAVE, lay.width + 0.01))
+    sx, sz = lay.socket
+    back_keep = [rounded_rect(sx - 10.0, sz - 6.0, sx + 10.0, sz + 6.0, 3.0)]
+    back_keep += [circle(3.6, sx + dx, sz) for dx in (-SOCKET_HOLE_DX, SOCKET_HOLE_DX)]
+    if g.cfg.board == "pi4":
+        back_keep.append(rect(sx + 18.0, 18.0, sx + 51.0, 42.0))
+    back = _rounded_field(max(lay.r_back, FRAME), z0, lay.width - max(lay.r_back, FRAME), z1)
+    fields.append(xz_slab(back - section_union(back_keep), lay.depth - ENGRAVE, lay.depth + 0.01))
+    return union(fields)
 
 
 def _pn532_frame(g: Geometry, tol: float) -> Manifold:
@@ -240,6 +287,14 @@ def front(g: Geometry) -> Shape:
         seat = snout.footprint.offset(0.2).translate((sx, sz))
         panel -= xz_slab(seat, WALL - 0.01, WALL + faces.RECESS)
     panel -= xz_slab(openings.translate((sx, sz)), WALL - 1.0, g.panel_back + 1.0)
+    # The grille as a large disc like on a radio speaker: through holes in front of the speaker,
+    # the same pattern as shallow dimples beyond it (the speaker seat is behind).
+    disc_r = _disc_radius(g) if snout is None else None
+    dimples = CrossSection()
+    if disc_r is not None:
+        dimples = _dimples(patterns.grille(cfg.grille, disc_r - 2.0), openings)
+        if not dimples.is_empty():
+            panel -= xz_slab(dimples.translate((sx, sz)), WALL - 0.01, WALL + DIMPLE)
 
     # Speaker seat on the back: centring ring and three bosses for the clamp ring.
     back = g.panel_back
@@ -258,6 +313,10 @@ def front(g: Geometry) -> Shape:
         label = text.fitted(cfg.name, nx1 - nx0, min(nz1 - nz0, 16.0) * 0.72, 5.0)
         _, by0, _, by1 = bounds(label)
         marks.append(label.translate(((nx0 + nx1) / 2, (nz0 + nz1) / 2 - (by0 + by1) / 2)))
+    if disc_r is not None:
+        disc = circle(disc_r) - dimples - openings
+        marks.append(disc.translate((sx, sz)))
+        marks += _notes(g, disc_r)
     if lay.character is not None:
         face = characters.face_marks(lay.character, r, snout is not None).translate((sx, sz))
         # Keep a bar between the face and the grille openings; nothing under the snout.
@@ -269,6 +328,52 @@ def front(g: Geometry) -> Shape:
         return Shape(solid, Manifold())
     inlay = _engrave_front(section_union(marks))
     return Shape(solid - inlay, inlay)
+
+
+def _dimples(pattern: CrossSection, openings: CrossSection) -> CrossSection:
+    """The grille pattern where it is not already open: dimples on top of a hole are left
+    out, a slot that runs into an opening stops a bar's width before it."""
+    near = openings.offset(1.0)
+    kept: list[CrossSection] = []
+    for part in pattern.decompose():
+        if (part ^ openings).is_empty():
+            kept.append(part)
+            continue
+        for rest in (part - near).decompose():
+            if rest.area() > 3.0 and not rest.offset(-0.6).is_empty():
+                kept.append(rest)
+    return section_union(kept)
+
+
+def _disc_radius(g: Geometry) -> float:
+    """The grille disc: as large as the window allows, clear of the name, at least the
+    speaker."""
+    lay = g.lay
+    sx, sz = lay.speaker
+    wx0, wx1 = lay.window_x
+    nx0, _, nx1, nz1 = lay.name_box
+    room = [sx - wx0 - 5.0, wx1 - sx - 5.0, lay.window_top - sz - 5.0, sz - g.panel_z[0] - 6.0]
+    if nx0 < sx < nx1:  # name below
+        room.append(sz - nz1 - 4.0)
+    else:  # name beside
+        room.append((nx0 - sx - 4.0) if nx0 > sx else (sx - nx1 - 4.0))
+    return max(min(room), g.cfg.speaker / 2)
+
+
+def _notes(g: Geometry, disc_r: float) -> list[CrossSection]:
+    """Music notes in the upper corners of the window, where they are clear of the grille and
+    the name."""
+    lay = g.lay
+    sx, sz = lay.speaker
+    wx0, wx1 = lay.window_x
+    nx0, nz0, nx1, nz1 = lay.name_box
+    clear = section_union([circle(disc_r + 4.0, sx, sz), rect(nx0, nz0, nx1, nz1).offset(3.0)])
+    notes: list[CrossSection] = []
+    for kind, x in (("eighth", wx0 + 5.0), ("beamed", wx1 - 12.0)):
+        note = patterns.note(kind).translate((x, lay.window_top - 17.0))  # type: ignore[arg-type]
+        if (note ^ clear).is_empty():
+            notes.append(note)
+    return notes
 
 
 def _snout(g: Geometry) -> faces.Face | None:

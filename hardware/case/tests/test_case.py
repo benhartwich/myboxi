@@ -245,3 +245,15 @@ def test_every_form_downloads(form: str) -> None:
     names = zipfile.ZipFile(io.BytesIO(data)).namelist()
     assert "LIESMICH.txt" in names
     assert export.title(cfg).startswith("Myboxi ")
+
+
+def test_fields_in_the_frame() -> None:
+    """Coloured fields set into the body (the front's colour), and a large grille disc."""
+    model = build(CaseConfig(form="cube"))
+    body = model.piece("body")
+    assert body.panel_color == CaseConfig(form="cube").color("front")  # red
+    assert body.panel.volume() > 1000.0  # top, sides and back, 0.6 mm deep
+    front = model.piece("front")
+    assert front.inlay.volume() > 600.0  # the grille disc and the notes in the accent colour
+    mono = build(CaseConfig(form="cube", colors="mono"))
+    assert mono.piece("body").panel.is_empty()  # one colour: recessed fields

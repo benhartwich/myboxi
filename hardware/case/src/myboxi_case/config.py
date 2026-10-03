@@ -54,7 +54,7 @@ ColorKey = Literal[
 # snout is the sculpted face of the animal boxes.
 SUGGESTED: dict[str, tuple[str, str, str, str]] = {
     "radio": ("sand", "moos", "creme", "creme"),
-    "cube": ("salbei", "creme", "moos", "creme"),
+    "cube": ("sand", "rot", "weiss", "creme"),  # a wooden frame with red fields
     "bear": ("braun", "sand", "anthrazit", "creme"),
     "unicorn": ("weiss", "flieder", "sonne", "rosa"),
     "cat": ("apricot", "creme", "anthrazit", "weiss"),
