@@ -15,7 +15,14 @@ MAX_HOLE = 5.0  # keeps fingers and pens out (documented in docs/gehaeuse.md)
 MIN_BAR = 0.8  # thinnest material between openings
 
 
+def _play(x0: float, x1: float, s: float) -> CrossSection:
+    """A triangle pointing to the right, from x0 to its tip at x1."""
+    return polygon([(x0, -s / 2), (x1, 0), (x0, s / 2)])
+
+
 def symbol(kind: Symbol, size: float = 8.0) -> CrossSection:
+    """The engraving next to a button, ``size`` high. Play/pause (▶‖) and next (▶▶|) are wider
+    and keep their bars and gaps at least 0.8 mm apart, so they stay apart when printed."""
     s = size
     bar = s * 0.22
     match kind:
@@ -26,15 +33,11 @@ def symbol(kind: Symbol, size: float = 8.0) -> CrossSection:
         case "minus":
             return rect(-s / 2, -bar / 2, s / 2, bar / 2)
         case "play_pause":
-            tri = polygon([(-s / 2, -s / 2), (s * 0.05, 0), (-s / 2, s / 2)])
-            bars = [
-                rect(s * 0.18, -s / 2, s * 0.18 + bar, s / 2),
-                rect(s / 2 - bar, -s / 2, s / 2, s / 2),
-            ]
-            return section_union([tri, *bars])
+            pause = [rect(x, -s / 2, x + s * 0.175, s / 2) for x in (s * 0.1, s * 0.45)]
+            return section_union([_play(-s * 0.625, -s * 0.075, s), *pause])
         case "next":
-            tri = polygon([(-s / 2, -s / 2), (s * 0.25, 0), (-s / 2, s / 2)])
-            return section_union([tri, rect(s / 2 - bar, -s / 2, s / 2, s / 2)])
+            plays = [_play(-s * 0.625, -s * 0.075, s), _play(-s * 0.2, s * 0.35, s)]
+            return section_union([*plays, rect(s * 0.45, -s / 2, s * 0.625, s / 2)])
 
 
 def star(r_out: float, r_in: float) -> CrossSection:

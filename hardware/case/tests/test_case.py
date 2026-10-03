@@ -15,9 +15,9 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from myboxi_case import GENERATOR_VERSION, export
+from myboxi_case import GENERATOR_VERSION, export, patterns
 from myboxi_case.build import build
-from myboxi_case.checks import check, check_assembly
+from myboxi_case.checks import MIN_FEATURE, check, check_assembly
 from myboxi_case.components import Component
 from myboxi_case.config import CaseConfig, Form
 from myboxi_case.geom import bbox, mesh_arrays
@@ -257,3 +257,13 @@ def test_fields_in_the_frame() -> None:
     assert front.inlay.volume() > 600.0  # the grille disc and the notes in the accent colour
     mono = build(CaseConfig(form="cube", colors="mono"))
     assert mono.piece("body").panel.is_empty()  # one colour: recessed fields
+
+
+def test_button_symbols_tell_play_from_next() -> None:
+    """Play/pause (▶‖) and next (▶▶|) look different (SPEC §9.4), also once printed: the pause
+    bars stay apart, and every gap between the strokes is at least a printed line wide."""
+    play, skip = patterns.symbol("play_pause"), patterns.symbol("next")
+    grown = MIN_FEATURE / 2 - 0.01  # strokes closer than MIN_FEATURE would merge
+    assert len(play.offset(grown).decompose()) == 3  # triangle and two bars
+    assert len(skip.offset(grown).decompose()) == 2  # two triangles in one, and the bar
+    assert ((play - skip) + (skip - play)).area() > 0.4 * play.area()
