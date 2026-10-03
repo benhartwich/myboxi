@@ -8,6 +8,7 @@ import json
 import struct
 import zipfile
 from dataclasses import replace
+from typing import get_args
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -18,7 +19,7 @@ from myboxi_case import GENERATOR_VERSION, export
 from myboxi_case.build import build
 from myboxi_case.checks import check, check_assembly
 from myboxi_case.components import Component
-from myboxi_case.config import CaseConfig
+from myboxi_case.config import CaseConfig, Form
 from myboxi_case.geom import bbox, mesh_arrays
 from myboxi_case.layout import LayoutError
 from myboxi_case.render import assembled, render
@@ -232,3 +233,13 @@ def test_render_png() -> None:
     png = render(assembled(build(CaseConfig(form="cube"))), size=(160, 120))
     assert png.startswith(b"\x89PNG\r\n\x1a\n")
     assert struct.unpack(">II", png[16:24]) == (160, 120)
+
+
+@pytest.mark.parametrize("form", get_args(Form))
+def test_every_form_downloads(form: str) -> None:
+    """The whole download for each form (the animal boxes once failed on their title)."""
+    cfg = CaseConfig.model_validate({"form": form, "name": "Mia"})
+    data = export.bundle_zip(build(cfg))
+    names = zipfile.ZipFile(io.BytesIO(data)).namelist()
+    assert "LIESMICH.txt" in names
+    assert export.title(cfg).startswith("Myboxi ")
