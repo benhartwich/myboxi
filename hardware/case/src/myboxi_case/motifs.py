@@ -43,7 +43,7 @@ ACCENTS: dict[str, str] = {
     "bunny": "weiss",
     "frog": "sonne",
     "unicorn": "rosa",
-    "person": "braun",
+    "person": "sonne",
 }
 
 

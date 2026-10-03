@@ -166,7 +166,7 @@ async def test_figure_preview_and_download(client: httpx.AsyncClient) -> None:
     assert r.status_code == 200
     assert r.headers["content-encoding"] == "gzip"
     info, meshes = read_preview(r.content)
-    assert info["version"] == "figure 2"
+    assert info["version"] == "figure 3"
     assert len(meshes) == 1
     r = await client.get("/gestalten/figur/download.zip?top=flat&shape=round&name=Lotta")
     assert r.status_code == 200

@@ -50,7 +50,7 @@ from myboxi_case.render import Item, render
 from myboxi_case.slicer import U1_FOLDER, u1_project_settings
 
 # Part of every digest. Bump on any change that alters generated geometry.
-FIGURE_VERSION = "2"
+FIGURE_VERSION = "3"
 MAX_LABEL = 10
 
 Shape = Literal["round", "square", "heart", "star"]
@@ -88,6 +88,8 @@ TAB_WIDTH = 20.0  # the tab under the figure that goes into the base's slot
 SLOT_DEPTH = 5.0
 SLOT_Y = 2.0  # the figure stands just behind the middle of the base
 FIGURE_Y = 2.0  # a round figure: where its feet start, behind the name
+FIGURE_SCALE = {40: 1.0, 50: 1.15}  # the larger base: a larger figure and room for a name
+FIGURE_SHRINK = (1.0, 0.93, 0.86)
 
 
 class FigureError(ValueError):
@@ -291,8 +293,11 @@ def _figure_place(
             continue
         fits = True
         front = y + bounds(footprint)[1] - LABEL_GAP
+        region = top_face ^ rect(-60.0, -60.0, 60.0, front)
+        if name and region.is_empty():
+            continue  # no room in front: further back
         try:
-            return y, _place_label(name, top_face ^ rect(-60.0, -60.0, 60.0, front), size)
+            return y, _place_label(name, region, size)
         except FigureError:
             continue
     if fits:
@@ -413,9 +418,16 @@ def build_figure(cfg: FigureConfig, strokes: trace.Rings | None = None) -> Figur
     label = CrossSection()
     y_fig = FIGURE_Y
     if cfg.top == "figure" and cfg.motif != "drawing":  # a drawing only stands flat
-        figure = figures3d.figure(cfg.motif, cfg.size / 40)
-        footprint = (figure.body + figure.accent + figure.details).slice(0.1)
-        y_fig, label = _figure_place(footprint, top_face, cfg.name, cfg.size)
+        # A little smaller where the name would not fit otherwise (a star's narrow front).
+        for shrink in FIGURE_SHRINK:
+            figure = figures3d.figure(cfg.motif, FIGURE_SCALE[cfg.size] * shrink)
+            footprint = (figure.body + figure.accent + figure.details).slice(0.1)
+            try:
+                y_fig, label = _figure_place(footprint, top_face, cfg.name, cfg.size)
+                break
+            except FigureError:
+                if shrink == FIGURE_SHRINK[-1]:
+                    raise
     if cfg.top == "standee":
         # the name in front of the figure: its slot starts just behind the middle
         front = SLOT_Y - (TILE / 2 + cfg.tolerance) - 1.0 - LABEL_GAP

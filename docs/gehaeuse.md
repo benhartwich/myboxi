@@ -141,11 +141,13 @@ Unter **app.myboxi.eu/gestalten/figur** („Figur gestalten“) entsteht ein Soc
 - Form: rund, eckig, Herz oder Stern. Spitzen und Ecken sind abgerundet.
 - Größe: 40 oder 50 mm.
 - Oberseite:
-  - **3D-Figur** aus unserer Sammlung: Bär, Katze, Hase, Frosch, Einhorn oder ein Männchen, rund modelliert, etwa 4 bis 5,5 cm hoch (beim 50-mm-Sockel ein Viertel größer).
-    - Sie wird aufrecht und in einem Stück mit dem Sockel gedruckt, ohne Stützen und ohne Kleben. Unter Kinn, Armen und Ohren sitzen dafür kleine 45°-Schrägen; nichts beginnt in der Luft.
-    - Vierfarbig auf dem Snapmaker U1: Kopf 1 Sockel, Kopf 2 Name und Akzente (Bauch, Schnauze, Ohren, Horn), Kopf 3 Figur, Kopf 4 Gesicht. Die Farbe der Akzente wird je Figur vorgeschlagen, etwa Rosa beim Einhorn.
+  - **3D-Figur** aus unserer Sammlung: Bär mit Stern, Katze, Hase und Kind mit Herz, Frosch, Einhorn mit Stern. Sie sitzen, die Beine nach vorn, etwa 4,5 bis 5,5 cm hoch (beim 50-mm-Sockel etwas größer).
+    - Weich modelliert: Kopf, Körper, Arme und Beine gehen ineinander über wie bei einer geformten Figur (Abstandsfelder mit weichen Übergängen, `hardware/case/src/myboxi_case/figures3d.py`).
+    - Aufrecht und in einem Stück mit dem Sockel gedruckt, ohne Stützen und ohne Kleben. Unter allem, was steiler als 45° überhängt, sitzt eine weiche Kehle; was die Figur hält, liegt auf ihrem Schoß auf. Die Tests prüfen, dass keine Schicht in der Luft beginnt.
+    - Vierfarbig auf dem Snapmaker U1: Kopf 1 Sockel, Kopf 2 Name und Akzente (Schnauze, Sohlen, Ohren, Stern oder Herz, Haare), Kopf 3 Figur, Kopf 4 Gesicht. Die Farbe der Akzente wird je Figur vorgeschlagen.
     - Einfarbig ist das Gesicht eingraviert.
-    - Geprüft mit dem Profil des Snapmaker U1 in Snapmaker Orca: druckt ohne Stützen, Druckpause für den Chip wie beim Sockel, etwa 3,5 bis 4 Stunden.
+    - Wird es mit Namen zu eng (die Spitze des Sterns), wird die Figur bis zu 14 % kleiner.
+    - Geprüft mit dem Profil des Snapmaker U1 in Snapmaker Orca: druckt ohne Stützen, Druckpause für den Chip wie beim Sockel, etwa 2 Stunden.
   - **Flach**, um eine vorhandene Figur daraufzukleben, etwa ein Spieltier. Am besten mit 2K-Kleber oder Sekundenkleber-Gel.
   - **Noppen** für Klemmbausteine: Eine Minifigur oder etwas Gebautes steckt direkt darauf. Die Noppen sitzen im üblichen 8-mm-Raster, als rechteckiger Block. Wie fest sie halten, regelt „Spiel für die Noppen“: weniger Spiel heißt dickere Noppen und festeren Halt.
   - **Aufsteller**: dieselben Figuren flach, etwa 5 cm hoch und 6 mm dick, oder eine eigene Zeichnung.
