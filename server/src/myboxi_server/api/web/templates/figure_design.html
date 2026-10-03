@@ -103,7 +103,8 @@
     {% for field, role, label, rule in color_roles %}
     <fieldset class="field" {% if rule %}{{ show(rule) }}{% endif %}>
       <legend>Farbe {{ label }}</legend>
-      {% if role == 'accent' %}<span class="muted" {{ show('top=figure') }}>Bei der 3D-Figur auch Bauch, Schnauze und Ohren.</span>{% endif %}
+      {% if role == 'accent' %}<span class="muted" {{ show('top=figure') }}>Bei der 3D-Figur die Kleidung; der Name ist dann dunkel wie das Gesicht.</span>{% endif %}
+      {% if role == 'details' %}<span class="muted" {{ show('top=figure|standee') }}>Auch Schuhe und der Name auf dem Sockel. Schnauze und was die Figur hält, haben die Farbe des Sockels.</span>{% endif %}
       <div class="swatches">
         {% for key, color in palette.items() %}
         <label class="swatch" title="{{ color[0] }}">

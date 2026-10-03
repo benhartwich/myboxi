@@ -1,5 +1,5 @@
 """Round figures for the NFC base ("Figur gestalten", docs/gehaeuse.md): a little bear, cat, …
-sitting on the base, modelled in 3D and printed upright in one piece with it.
+standing on the base like a toy figure, modelled in 3D and printed upright in one piece with it.
 
 The figures are soft shapes: signed distance fields of ellipsoids and round cones, blended into
 each other like a sculpt (smooth minimum), sampled on a grid and turned into a mesh
@@ -11,8 +11,9 @@ it, shrunk by one grid step per step down (45°). Wherever the shape hangs over 
 this adds a smooth fillet. The figures are drawn so that every fillet lands on the figure below
 it (tests: no layer starts in mid-air).
 
-Colours are regions of the solid (accents: snout, soles, inner ears, what the figure holds;
-details: eyes, nose, mouth), cut from it with the same soft shapes. Building a figure takes a
+Standing in clothes, holding something against the belly. Colours are regions of the solid,
+cut from it with the same soft shapes: white like the base (snout, what it holds), the clothes,
+the fur, and dark details (eyes, nose, mouth, shoes, hair). Building a figure takes a
 few seconds; the meshes are kept in memory and, with ``CACHE_DIR`` set, on disk.
 """
 
@@ -47,9 +48,10 @@ Points = tuple[Field, Field, Field]
 
 @dataclass(frozen=True)
 class Figure3D:
-    body: Manifold  # the figure's colour
-    accent: Manifold  # snout, soles, inner ears, what it holds: the name's colour
-    details: Manifold  # eyes, nose, mouth
+    body: Manifold  # fur or skin: the figure's colour
+    clothes: Manifold  # the accent colour
+    white: Manifold  # snout, what it holds: the base's colour
+    details: Manifold  # eyes, nose, mouth, shoes, hair: dark
 
 
 # --- soft shapes ---------------------------------------------------------------------------------
@@ -193,8 +195,8 @@ def heart(c: Vec, width: float, thick: float) -> Shape:
     """A plush heart standing upright, its face towards -y."""
     r = width / 4
     tip = (c[0], c[1], c[2] - width * 0.56)
-    lobes = both(lambda s: Cone((c[0] + s * r * 0.95, c[1], c[2] + r * 0.55), tip, r, 0.8))
-    return Flat(blend(*lobes, k=1.2), c[1], thick / (2 * r))
+    lobes = both(lambda s: Cone((c[0] + s * r * 1.02, c[1], c[2] + r * 0.6), tip, r, 0.8))
+    return Flat(blend(*lobes, k=0.8), c[1], thick / (2 * r))
 
 
 def star(c: Vec, r: float, thick: float, arm: float = 2.2) -> Shape:
@@ -212,170 +214,167 @@ def star(c: Vec, r: float, thick: float, arm: float = 2.2) -> Shape:
 @dataclass(frozen=True)
 class Design:
     shape: Shape
-    accents: tuple[Shape, ...]
-    details: tuple[Shape, ...]
+    white: tuple[Shape, ...]  # snout, cheeks, what it holds: the base's colour (white)
+    clothes: tuple[Shape, ...]  # jacket, dress, mane: the accent colour
+    details: tuple[Shape, ...]  # eyes, nose, mouth, shoes, hair: dark
 
 
-HEAD_C: Vec = (0.0, -1.0, 31.0)
+HEAD_C: Vec = (0.0, -0.6, 34.5)
+HEAD_R: Vec = (10.4, 9.4, 9.4)
+HELD: Vec = (0.0, -8.9, 17.4)  # what the figure holds, against its belly
 
 
-def _sitting(
-    hands: Vec = (5.0, -9.4, 15.0), feet: Vec = (4.2, 2.8, 4.4), holds: bool = True
-) -> tuple[Shape, list[Shape]]:
-    """Body, legs to the front and arms reaching to ``hands``; and the soles (accents), which
-    reach deep into the feet so their edge is crisp. A figure that ``holds`` something gets a
-    lap for it to rest on and a chest that carries the snout above it."""
-    body = blend(
-        Ell((0, 0.6, 12.0), (9.2, 8.3, 10.6)),
-        Ell((0, 0.6, 6.4), (10.0, 8.9, 6.6)),
-        *([Ell((0, -7.5, 5.0), (6.8, 6.2, 5.4)), Ell((0, -5.5, 20.0), (6.0, 6.0, 5.0))]
-          if holds else []),
+def _standing(
+    hands: Vec = (4.0, -7.0, 16.2), dress: bool = False, jacket: bool = True
+) -> tuple[Shape, list[Shape], list[Shape]]:
+    """Legs, shoes, a round belly and arms reaching to ``hands`` in front of it; and the shoes
+    and the clothes (a top open at the front, with sleeves; with a ``dress``, a skirt).
+
+    The belly is round and low, so what the figure holds leans on it: nothing hangs in mid-air
+    below its hands."""
+    shoes = both(lambda s: Ell((s * 4.3, -2.2, 1.6), (3.9, 6.0, 2.8)))
+    legs = both(lambda s: Cone((s * 3.7, 0.6, 3.0), (s * 3.5, 0.8, 13.0), 3.2, 3.6))
+    torso = blend(
+        Ell((0, 0.8, 19.0), (8.0, 6.8, 8.6)),
+        Ell((0, -3.2, 14.8), (6.8, 5.6, 7.2)),
+        Ell((0, -4.6, 25.4), (5.6, 4.6, 3.8)),  # the chest: carries the snout above it
         k=3,
-    )  # fmt: skip
-    legs = both(
-        lambda s: blend(
-            Cone((s * 5.6, -1.0, 5.0), (s * 7.0, -9.0, 4.2), 5.0, 4.3),
-            Ell((s * 7.3, -11.4, 4.5), feet),
-            k=1.5,
-        )
     )
-    arms = both(lambda s: Cone((s * 8.5, -1.0, 21.0), (s * hands[0], hands[1], hands[2]), 3.9, 3.3))
-    soles = both(lambda s: Ell((s * 7.3, -11.2, 4.5), (feet[0] - 0.4, 4.2, feet[2] - 0.4)))
-    return blend(body, *legs, *arms, k=3), soles
+    hx, hy, hz = hands
+    arms = both(lambda s: Cone((s * 7.2, 0.4, 24.5), (s * hx, hy + 0.4, hz + 0.3), 2.8, 2.5))
+    hand = both(lambda s: ball((s * hx, hy, hz), 2.9))
+    parts: list[Shape] = [torso, *legs, *arms, *hand]
+    if dress:  # a skirt over the legs, widening down towards the shoes
+        parts.append(Cone((0, 0.4, 14.0), (0, 0.4, 5.0), 7.4, 9.0))
+    body = blend(blend(*parts, k=2.2), *shoes, k=1.2)
+    shirt = blend(Ell((0, 0.8, 19.5), (8.8, 7.6, 8.8)), Ell((0, -4.6, 24.0), (6.4, 5.4, 4.6)))
+    # a jacket stays open at the front, a shirt or a dress is closed
+    top = Cut(shirt, Ell((0, -7.0, 16.0), (3.6, 5.0, 9.0))) if jacket else shirt
+    sleeves = both(lambda s: Cone((s * 7.2, 0.4, 24.5), (s * 5.0, -4.6, 18.6), 3.4, 3.1))
+    clothes: list[Shape] = [top, *sleeves]
+    if dress:
+        clothes.append(Cone((0, 0.4, 14.5), (0, 0.4, 4.6), 8.2, 9.8))
+    return body, shoes, clothes
+
+
+def _eyes(spread: float = 3.8, y: float = -8.6, z: float = 36.0, r: float = 1.5) -> list[Shape]:
+    return both(lambda s: ball((s * spread, y, z), r))
+
+
+def _hold(shape: Shape, held: Shape) -> Shape:
+    """``held`` against the belly, blended into it so its lowest points hold on."""
+    return blend(shape, held, k=2.2)
 
 
 def bear() -> Design:
-    body, soles = _sitting()
-    head = Ell(HEAD_C, (12.0, 10.6, 11.0))
-    ears = both(lambda s: Ell((s * 8.9, 0.4, 40.0), (4.7, 3.1, 4.7)))
-    inner = both(lambda s: Ell((s * 8.9, -1.6, 40.2), (3.0, 2.4, 3.0)))
-    muzzle = Ell((0, -10.4, 28.0), (5.4, 4.9, 4.2))
-    nose = Ell((0, -15.0, 29.6), (2.5, 1.6, 1.8))
-    eyes = both(lambda s: ball((s * 4.6, -10.0, 32.6), 1.7))
-    mouth = [
-        Cone((0, -15.1, 28.2), (0, -14.6, 26.6), 0.45, 0.45),
-        *both(lambda s: Cone((0, -14.6, 26.6), (s * 1.6, -14.0, 26.1), 0.45, 0.45)),
-    ]
-    held = star((0, -12.0, 15.55), 7.4, 4.2)  # from the feet up to the chin
-    shape = blend(blend(body, head, k=4), *ears, muzzle, nose, k=1.6)
-    return Design(
-        blend(shape, *eyes, held, k=0.6),
-        (*soles, *inner, Ell((0, -9.0, 28.0), (5.6, 6.6, 4.4)), held),
-        (nose, *eyes, *mouth),
-    )
+    body, shoes, clothes = _standing()
+    ears = both(lambda s: Ell((s * 7.6, 0.6, 42.0), (4.0, 2.8, 4.0)))
+    inner = both(lambda s: Ell((s * 7.6, -1.2, 42.2), (2.5, 2.2, 2.5)))
+    muzzle = Ell((0, -8.6, 31.8), (4.6, 4.2, 3.6))
+    nose = Ell((0, -12.4, 33.0), (2.2, 1.4, 1.5))
+    eyes = _eyes()
+    mouth = Cone((0, -12.6, 31.6), (0, -12.1, 30.2), 0.45, 0.45)
+    held = star(HELD, 5.6, 3.4, arm=1.7)
+    shape = blend(blend(body, Ell(HEAD_C, HEAD_R), k=3.0), *ears, muzzle, nose, k=1.4)
+    white = (Ell((0, -7.4, 31.5), (4.8, 5.4, 3.8)), held, *inner)
+    return Design(blend(_hold(shape, held), *eyes, k=0.6), white, tuple(clothes),
+                  (*shoes, nose, *eyes, mouth))  # fmt: skip
 
 
 def cat() -> Design:
-    body, soles = _sitting()
+    body, shoes, clothes = _standing()
     tail = blend(
-        Cone((5.0, 7.0, 3.0), (9.4, 1.0, 2.8), 2.4, 2.2),
-        Cone((9.4, 1.0, 2.8), (9.6, -6.6, 2.8), 2.2, 1.9),
+        Cone((3.0, 6.0, 10.0), (8.0, 8.0, 16.0), 2.0, 1.8),
+        Cone((8.0, 8.0, 16.0), (9.0, 6.0, 24.0), 1.8, 1.5),
         k=1.0,
     )
-    head = Ell((0, -0.6, 30.4), (12.8, 10.4, 10.4))
-    ears = both(lambda s: Cone((s * 7.4, 0.2, 37.2), (s * 9.4, 0.8, 43.4), 4.8, 1.3))
-    inner = both(lambda s: Cone((s * 7.6, -1.8, 38.2), (s * 9.1, -1.2, 42.4), 2.5, 0.7))
-    cheeks = both(lambda s: Ell((s * 2.0, -10.4, 27.0), (2.6, 2.2, 2.1)))
-    nose = Ell((0, -12.1, 28.9), (1.5, 1.0, 1.1))
-    eyes = both(lambda s: Ell((s * 4.9, -9.4, 32.0), (1.6, 1.5, 2.3)))
+    head = Ell(HEAD_C, (10.8, 9.4, 9.2))
+    ears = both(lambda s: Cone((s * 6.4, 0.2, 40.5), (s * 8.2, 0.6, 46.4), 4.2, 1.1))
+    inner = both(lambda s: Cone((s * 6.6, -1.6, 41.2), (s * 7.9, -1.1, 45.2), 2.2, 0.6))
+    cheeks = both(lambda s: Ell((s * 1.8, -9.0, 31.6), (2.4, 2.0, 1.9)))
+    nose = Ell((0, -10.4, 33.2), (1.3, 0.9, 1.0))
+    eyes = both(lambda s: Ell((s * 4.0, -8.4, 36.0), (1.4, 1.3, 2.0)))
     whiskers = [
-        Cone((s * 4.6, -11.0, 27.4 + dz), (s * 10.4, -7.6, 28.0 + dz * 1.8), 0.5, 0.45)
+        Cone((s * 4.0, -9.6, 32.0 + dz), (s * 9.0, -6.8, 32.6 + dz * 1.6), 0.45, 0.4)
         for s in (-1, 1)
-        for dz in (-1.0, 1.0)
+        for dz in (-0.9, 0.9)
     ]
-    held = heart((0, -12.0, 16.3), 13.0, 4.4)
-    shape = blend(blend(body, tail, k=3), head, k=4)
-    shape = blend(shape, *ears, *cheeks, nose, k=1.5)
-    return Design(
-        blend(shape, *eyes, held, k=0.6),
-        (*soles, *inner, Ell((0, -8.6, 26.6), (5.0, 4.4, 3.2)), held),
-        (nose, *eyes, *whiskers),
-    )
+    held = heart((0, -9.3, 18.2), 10.6, 3.6)
+    shape = blend(blend(blend(body, tail, k=2.0), head, k=3.0), *ears, *cheeks, nose, k=1.3)
+    return Design(blend(_hold(shape, held), *eyes, k=0.6), (*cheeks, held, *inner),
+                  tuple(clothes), (*shoes, nose, *eyes, *whiskers))  # fmt: skip
 
 
 def bunny() -> Design:
-    body, soles = _sitting()
-    tail = ball((0, 8.6, 5.0), 3.8)
-    head = Ell((0, -0.8, 30.4), (11.6, 10.4, 10.8))
+    body, shoes, clothes = _standing(dress=True, jacket=False)
     ears = both(
-        lambda s: Flat(Cone((s * 4.2, 0.4, 38.0), (s * 6.0, 1.6, 51.0), 3.6, 3.2), 1.0, 0.7)
+        lambda s: Flat(Cone((s * 3.6, 0.4, 41.0), (s * 5.0, 1.4, 53.5), 3.2, 2.8), 1.0, 0.7)
     )
     inner = both(
-        lambda s: Flat(Cone((s * 4.3, -2.0, 40.5), (s * 6.0, -1.0, 50.0), 2.0, 1.7), -2.0, 1.1)
+        lambda s: Flat(Cone((s * 3.7, -1.6, 43.0), (s * 5.0, -0.8, 52.4), 1.8, 1.5), -1.6, 1.1)
     )
-    cheeks = both(lambda s: Ell((s * 2.2, -10.4, 27.2), (3.0, 2.6, 2.5)))
-    nose = Ell((0, -12.6, 29.0), (1.6, 1.0, 1.1))
-    teeth = Ell((0, -11.0, 25.6), (1.6, 2.0, 1.4))  # a patch of colour below the nose
-    eyes = both(lambda s: ball((s * 4.6, -9.6, 32.4), 1.8))
-    held = heart((0, -12.0, 16.3), 13.0, 4.4)
-    shape = blend(blend(body, tail, k=3), head, k=4)
-    shape = blend(shape, *ears, *cheeks, nose, k=1.5)
-    return Design(
-        blend(shape, *eyes, held, k=0.6),
-        (*soles, *inner, *both(lambda s: Ell((s * 2.2, -9.4, 27.2), (3.2, 3.6, 2.7))), teeth,
-         tail, held),
-        (nose, *eyes),
-    )  # fmt: skip
+    cheeks = both(lambda s: Ell((s * 2.0, -8.8, 31.6), (2.6, 2.2, 2.1)))
+    teeth = Ell((0, -10.0, 29.8), (1.4, 1.6, 1.2))
+    nose = Ell((0, -10.6, 33.2), (1.3, 0.9, 1.0))
+    eyes = _eyes(r=1.6)
+    held = heart((0, -9.3, 18.2), 10.6, 3.6)
+    shape = blend(blend(body, Ell(HEAD_C, (10.0, 9.2, 9.4)), k=3.0), *ears, *cheeks, nose, k=1.3)
+    return Design(blend(_hold(shape, held), *eyes, k=0.6), (*cheeks, held, *inner, teeth),
+                  tuple(clothes), (*shoes, nose, *eyes))  # fmt: skip
 
 
 def frog() -> Design:
-    body, soles = _sitting(hands=(7.4, -7.4, 12.0), feet=(5.0, 3.0, 3.8), holds=False)
-    head = Ell((0, -0.8, 27.6), (13.4, 10.8, 8.6))
-    bumps = both(lambda s: ball((s * 6.6, -3.2, 34.2), 4.8))
-    whites = both(lambda s: Ell((s * 6.6, -5.0, 35.0), (3.4, 3.6, 3.4)))
-    pupils = both(lambda s: Ell((s * 6.6, -7.8, 35.6), (1.7, 1.1, 2.0)))
+    body, shoes, clothes = _standing(hands=(4.2, -7.2, 15.4))
+    head = Ell((0, -0.6, 32.6), (11.6, 9.6, 7.6))
+    bumps = both(lambda s: ball((s * 5.8, -2.4, 38.4), 4.2))
+    whites = both(lambda s: Ell((s * 5.8, -4.2, 39.0), (3.0, 3.2, 3.0)))
+    pupils = both(lambda s: Ell((s * 5.8, -6.4, 39.4), (1.4, 1.0, 1.7)))
     mouth = [
-        Cone((-6.0, -9.2, 25.4), (0, -11.4, 24.2), 0.55, 0.55),
-        Cone((0, -11.4, 24.2), (6.0, -9.2, 25.4), 0.55, 0.55),
+        Cone((-5.0, -8.6, 31.0), (0, -10.2, 30.0), 0.5, 0.5),
+        Cone((0, -10.2, 30.0), (5.0, -8.6, 31.0), 0.5, 0.5),
     ]
-    nostrils = both(lambda s: ball((s * 1.4, -11.6, 27.6), 0.6))
-    belly = Ell((0, -3.0, 10.8), (7.2, 7.2, 8.0))
-    shape = blend(blend(body, head, k=4), *bumps, k=2)
-    return Design(
-        blend(shape, *pupils, k=0.6), (*soles, *whites, belly), (*pupils, *mouth, *nostrils)
-    )
+    belly = Ell((0, -4.0, 15.5), (4.0, 6.0, 7.5))  # a vest open over a light belly
+    shape = blend(blend(body, head, k=3.0), *bumps, k=2.0)
+    return Design(blend(shape, *pupils, k=0.6), (*whites, belly), tuple(clothes),
+                  (*shoes, *pupils, *mouth))  # fmt: skip
 
 
 def unicorn() -> Design:
-    body, soles = _sitting()
-    head = Ell((0, -0.4, 31.0), (11.4, 10.4, 10.8))
-    muzzle = Ell((0, -9.6, 28.2), (6.4, 5.4, 4.4))
-    ears = both(lambda s: Cone((s * 6.6, 0.4, 38.6), (s * 8.4, 1.0, 44.4), 3.0, 0.9))
-    horn = Cone((0, -5.6, 39.6), (0, -8.2, 50.0), 3.0, 0.9)
+    body, shoes, clothes = _standing()
+    muzzle = Ell((0, -8.2, 31.4), (5.4, 4.6, 4.0))
+    ears = both(lambda s: Cone((s * 5.8, 0.4, 41.6), (s * 7.2, 1.0, 46.6), 2.6, 0.9))
+    horn = Cone((0, -4.6, 42.2), (0, -6.8, 51.4), 2.6, 0.8)
     mane = blend(
-        Cone((0, -1.0, 42.4), (0, 5.0, 40.2), 3.2, 3.2),
-        Cone((0, 5.0, 40.2), (0, 9.4, 34.0), 3.2, 2.8),
-        Cone((0, 9.4, 34.0), (0, 7.5, 27.0), 2.8, 2.4),
-        k=1.2,
+        Cone((0, -0.6, 44.0), (0, 4.6, 42.0), 2.8, 2.8),
+        Cone((0, 4.6, 42.0), (0, 8.2, 36.0), 2.8, 2.4),
+        Cone((0, 8.2, 36.0), (0, 6.8, 30.0), 2.4, 2.2),
+        k=1.0,
     )
-    nostrils = both(lambda s: Ell((s * 2.0, -14.8, 28.2), (0.8, 0.6, 0.9)))
-    lashes = both(lambda s: Cone((s * 3.0, -10.2, 32.4), (s * 6.6, -9.4, 32.6), 0.55, 0.55))
-    smile = Cone((-1.6, -14.6, 25.4), (1.6, -14.6, 25.4), 0.45, 0.45)
-    held = star((0, -12.0, 15.55), 7.4, 4.2)
-    shape = blend(body, head, k=4)
-    shape = blend(shape, muzzle, *ears, horn, mane, k=1.6)
-    return Design(
-        blend(shape, held, k=0.6),
-        (muzzle, horn, mane, held, *soles),
-        (*nostrils, *lashes, smile),
-    )
+    nostrils = both(lambda s: Ell((s * 1.8, -12.4, 32.2), (0.7, 0.5, 0.8)))
+    eyes = _eyes(spread=3.9, y=-8.4, z=36.2, r=1.4)
+    held = star(HELD, 5.6, 3.4, arm=1.7)
+    shape = blend(body, Ell(HEAD_C, (10.0, 9.2, 9.4)), k=3.0)
+    shape = blend(shape, muzzle, *ears, horn, mane, k=1.4)
+    return Design(blend(_hold(shape, held), *eyes, k=0.6), (muzzle, held), (*clothes, mane, horn),
+                  (*shoes, *nostrils, *eyes))  # fmt: skip
 
 
 def person() -> Design:
-    body, soles = _sitting(feet=(3.8, 3.2, 4.0))
-    head = ball((0, -0.6, 30.8), 11.0)
-    nose = ball((0, -11.6, 29.0), 1.2)
-    eyes = both(lambda s: ball((s * 4.0, -10.6, 31.0), 1.5))
-    smile = [
-        Cone((-2.4, -10.8, 26.4), (0, -11.4, 25.4), 0.5, 0.5),
-        Cone((0, -11.4, 25.4), (2.4, -10.8, 26.4), 0.5, 0.5),
+    body, shoes, clothes = _standing(jacket=False)
+    head = ball((0, -0.4, 34.2), 9.8)
+    nose = ball((0, -10.2, 33.0), 1.0)
+    eyes = _eyes(spread=3.6, y=-9.0, z=34.6, r=1.3)
+    smile = [  # on the head's surface, well below the nose
+        Cone((-2.6, -9.05, 30.4), (0, -9.05, 29.6), 0.5, 0.5),
+        Cone((0, -9.05, 29.6), (2.6, -9.05, 30.4), 0.5, 0.5),
     ]
-    # all of the head above the neck, without the face: both cuts cross the head steeply
-    hair = Cut(Cut(ball((0, -0.6, 30.8), 13.0), Ell((0, -9.5, 28.0), (9.0, 9.0, 8.4))),
-               Ell((0, 0.0, 6.0), (40.0, 40.0, 19.0)))  # fmt: skip
-    held = heart((0, -12.0, 16.3), 13.0, 4.4)
-    shape = blend(blend(body, head, k=4), nose, k=1.0)
-    return Design(blend(shape, *eyes, held, k=0.6), (hair, held, *soles), (*eyes, *smile))
+    # hair: all of the head without the face and below the ears; both cuts cross it steeply
+    hair = Cut(Cut(ball((0, -0.4, 34.2), 11.6), Ell((0, -8.6, 32.0), (8.6, 8.6, 7.8))),
+               Ell((0, 0, 12.0), (40.0, 40.0, 17.0)))  # fmt: skip
+    held = heart((0, -9.3, 18.2), 10.6, 3.6)
+    shape = blend(blend(body, head, k=3.0), nose, k=1.0)
+    return Design(blend(_hold(shape, held), *eyes, k=0.6), (held,), tuple(clothes),
+                  (*shoes, *eyes, *smile, hair))  # fmt: skip
 
 
 DESIGNS: dict[str, Callable[[], Design]] = {
@@ -460,8 +459,9 @@ def _build(motif: Motif) -> Figure3D:
     design = DESIGNS[motif]()
     solid = _solid(design.shape)
     detail = drop_slivers(solid ^ region_mesh(design.details))
-    accent = drop_slivers((solid ^ region_mesh(design.accents)) - detail)
-    return Figure3D(drop_slivers(solid - accent - detail), accent, detail)
+    white = drop_slivers((solid ^ region_mesh(design.white)) - detail)
+    clothes = drop_slivers((solid ^ region_mesh(design.clothes)) - detail - white)
+    return Figure3D(drop_slivers(solid - clothes - white - detail), clothes, white, detail)
 
 
 # --- cache ---------------------------------------------------------------------------------------
@@ -486,14 +486,16 @@ def _cached(motif: Motif) -> Figure3D:
     if path is not None and path.exists():
         try:
             with np.load(path) as data:
-                parts = [_from_arrays(data[f"{n}_v"], data[f"{n}_t"]) for n in ("b", "a", "d")]
+                parts = [_from_arrays(data[f"{n}_v"], data[f"{n}_t"]) for n in ("b", "c", "w", "d")]
             return Figure3D(*parts)
         except (OSError, ValueError, KeyError):
             pass  # rebuilt below
     figure = _build(motif)
     if path is not None:
         arrays: dict[str, Any] = {}
-        for name, part in (("b", figure.body), ("a", figure.accent), ("d", figure.details)):
+        named = (("b", figure.body), ("c", figure.clothes), ("w", figure.white),
+                 ("d", figure.details))  # fmt: skip
+        for name, part in named:
             arrays[f"{name}_v"], arrays[f"{name}_t"] = _to_arrays(part)
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_name(f".{path.stem}.{os.getpid()}.npz")  # several server processes
@@ -517,4 +519,4 @@ def figure(motif: Motif, scale: float = 1.0) -> Figure3D:
     if scale == 1.0:
         return fig
     s = (scale, scale, scale)
-    return Figure3D(fig.body.scale(s), fig.accent.scale(s), fig.details.scale(s))
+    return Figure3D(*(part.scale(s) for part in (fig.body, fig.clothes, fig.white, fig.details)))

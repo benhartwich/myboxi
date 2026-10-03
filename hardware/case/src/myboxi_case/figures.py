@@ -50,7 +50,7 @@ from myboxi_case.render import Item, render
 from myboxi_case.slicer import U1_FOLDER, u1_project_settings
 
 # Part of every digest. Bump on any change that alters generated geometry.
-FIGURE_VERSION = "3"
+FIGURE_VERSION = "4"
 MAX_LABEL = 10
 
 Shape = Literal["round", "square", "heart", "star"]
@@ -76,11 +76,12 @@ TAGS: dict[str, tuple[float, float, str]] = {
     "coin": (25.6, 1.2, "NFC-Münze NTAG213 oder NTAG215, Ø 25 mm, etwa 1 mm dick"),
     "sticker": (25.0, 0.3, "NFC-Aufkleber NTAG213 oder NTAG215, Ø 25 mm"),
 }
+# Suggested base and accent per shape: white bases, like toy figures on the box.
 SUGGESTED: dict[str, tuple[str, str]] = {
-    "round": ("moos", "creme"),
-    "square": ("himmel", "weiss"),
-    "heart": ("rosa", "weiss"),
-    "star": ("sonne", "anthrazit"),
+    "round": ("weiss", "anthrazit"),
+    "square": ("weiss", "himmel"),
+    "heart": ("weiss", "rosa"),
+    "star": ("weiss", "sonne"),
 }
 TOOL_BASE, TOOL_ACCENT, TOOL_MOTIF, TOOL_DETAILS = 1, 2, 3, 4
 TILE = 6.0  # thickness of the standing figure
@@ -188,7 +189,7 @@ class FigureConfig(BaseModel):
         if role == "details":  # the figure's face
             return self.color_details or "anthrazit"
         if role == "accent" and self.color_accent is None and self.top in FIGURE_TOPS:
-            # also the round figure's belly and snout: suggested per figure
+            # a round figure's clothes: suggested per figure
             return motifs.ACCENTS.get(self.motif) or SUGGESTED[self.shape][1]
         chosen = self.color_base if role == "base" else self.color_accent
         return chosen or SUGGESTED[self.shape][0 if role == "base" else 1]
@@ -278,6 +279,10 @@ def _slot_y(top_face: CrossSection, label: CrossSection, half_w: float, half_t: 
     raise FigureError(
         "Für die Figur ist auf diesem Sockel kein Platz. Bitte eine andere Form wählen."
     )
+
+
+def _figure_parts(figure: figures3d.Figure3D) -> list[Manifold]:
+    return [figure.body, figure.clothes, figure.white, figure.details]
 
 
 def _figure_place(
@@ -421,7 +426,7 @@ def build_figure(cfg: FigureConfig, strokes: trace.Rings | None = None) -> Figur
         # A little smaller where the name would not fit otherwise (a star's narrow front).
         for shrink in FIGURE_SHRINK:
             figure = figures3d.figure(cfg.motif, FIGURE_SCALE[cfg.size] * shrink)
-            footprint = (figure.body + figure.accent + figure.details).slice(0.1)
+            footprint = union(_figure_parts(figure)).slice(0.1)
             try:
                 y_fig, label = _figure_place(footprint, top_face, cfg.name, cfg.size)
                 break
@@ -456,14 +461,16 @@ def build_figure(cfg: FigureConfig, strokes: trace.Rings | None = None) -> Figur
         if cfg.colors == "multi":
             parts = (
                 ("figure3d", f"Figur {title_name}", figure.body, cfg.color("motif"), TOOL_MOTIF),
-                ("figure3d_accent", f"Figur {title_name} Akzente", figure.accent,
+                ("figure3d_clothes", f"Figur {title_name} Kleidung", figure.clothes,
                  cfg.color("accent"), TOOL_ACCENT),
+                ("figure3d_white", f"Figur {title_name} Hell", figure.white,
+                 cfg.color("base"), TOOL_BASE),
                 ("figure3d_details", f"Figur {title_name} Gesicht", figure.details,
                  cfg.color("details"), TOOL_DETAILS),
             )  # fmt: skip
         else:  # one filament: the face is engraved, the figure has the base's colour
             parts = (
-                ("figure3d", f"Figur {title_name}", figure.body + figure.accent,
+                ("figure3d", f"Figur {title_name}", figure.body + figure.clothes + figure.white,
                  cfg.color("base"), TOOL_BASE),
             )  # fmt: skip
         extras = tuple(
@@ -513,8 +520,9 @@ def build_figure(cfg: FigureConfig, strokes: trace.Rings | None = None) -> Figur
         rotation=(0, 0, 0),
         explode=(0, 0, 0),
         inlay=inlay,
-        inlay_color=cfg.color("accent"),
-        inlay_tool=TOOL_ACCENT,
+        # With a figure the name is dark like its face (readable on a white base).
+        inlay_color=cfg.color("details" if cfg.top in FIGURE_TOPS else "accent"),
+        inlay_tool=TOOL_DETAILS if cfg.top in FIGURE_TOPS else TOOL_ACCENT,
     )
     return FigureModel(
         cfg, piece, outline, (px, py, pocket_r, SKIN, round(pocket_z1, 2)), len(studs), label,
@@ -692,20 +700,30 @@ def _colours(model: FigureModel) -> str:
     return ", ".join(names[:-1]) + " und " + names[-1] if len(names) > 1 else names[0]
 
 
-def _heads(model: FigureModel) -> list[tuple[str, str]]:
-    """What each tool head prints, and in which colour (palette key), heads 1 to 4."""
+def _heads(model: FigureModel) -> list[tuple[int, str, str]]:
+    """Which tool head prints what, and in which colour (palette key)."""
     cfg = model.config
-    heads = [
-        ("Sockel", cfg.color_key("base")),
-        ("Name und Akzente" if cfg.top == "figure" else "Name", cfg.color_key("accent")),
-    ]
-    if cfg.top in FIGURE_TOPS:
-        heads += [("Figur", cfg.color_key("motif")), ("Gesicht", cfg.color_key("details"))]
-    return heads
+    if cfg.top == "figure":
+        return [
+            (1, "Sockel und Helles (Schnauze, Stern oder Herz)", cfg.color_key("base")),
+            (2, "Kleidung", cfg.color_key("accent")),
+            (3, "Figur", cfg.color_key("motif")),
+            (4, "Gesicht, Schuhe und Name", cfg.color_key("details")),
+        ]
+    if cfg.top == "standee":
+        return [
+            (1, "Sockel", cfg.color_key("base")),
+            (3, "Figur", cfg.color_key("motif")),
+            (4, "Gesicht und Name", cfg.color_key("details")),
+        ]
+    return [(1, "Sockel", cfg.color_key("base")), (2, "Name", cfg.color_key("accent"))]
 
 
 def _head_colours(model: FigureModel) -> list[str]:
-    return [PALETTE[key][1] for _, key in _heads(model)]
+    """Heads 1 to 4, for the U1 project (an unused head keeps a neighbour's colour)."""
+    by_head = {head: PALETTE[key][1] for head, _, key in _heads(model)}
+    first = by_head[1]
+    return [by_head.get(h, first) for h in range(1, 5)]
 
 
 def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
@@ -715,10 +733,7 @@ def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
     standee = cfg.top == "standee"
     round_figure = cfg.top == "figure"
     stem = file_stem(cfg)
-    heads = [
-        f"    Kopf {i}: {what} – {PALETTE[key][0]}"
-        for i, (what, key) in enumerate(_heads(model), start=1)
-    ]
+    heads = [f"    Kopf {i}: {what} – {PALETTE[key][0]}" for i, what, key in _heads(model)]
     lines = [
         title(cfg),
         "=" * len(title(cfg)),
@@ -772,6 +787,14 @@ def _readme(model: FigureModel, files: list[str], url: str | None) -> str:
     return "\n".join(lines)
 
 
+EXTRA_FILES = {
+    "figure3d": "-figur",
+    "figure3d_clothes": "-figur-kleidung",
+    "figure3d_white": "-figur-hell",
+    "figure3d_details": "-figur-gesicht",
+}
+
+
 def bundle_zip(model: FigureModel, url: str | None = None) -> bytes:
     stem = file_stem(model.config)
     entries: list[tuple[str, str | bytes]] = [
@@ -789,8 +812,7 @@ def bundle_zip(model: FigureModel, url: str | None = None) -> bytes:
                  export.stl(piece.printed(piece.inlay), f"{piece.label} Details"))
             )  # fmt: skip
     for extra in model.extras:  # in the base's frame: load together, as parts of one object
-        name = {"figure3d": "-figur", "figure3d_accent": "-figur-akzente",
-                "figure3d_details": "-figur-gesicht"}[extra.key]  # fmt: skip
+        name = EXTRA_FILES[extra.key]
         entries.append(
             (f"stl/{stem}{name}.stl", export.stl(model.piece.printed(extra.solid), extra.label))
         )

@@ -166,7 +166,7 @@ async def test_figure_preview_and_download(client: httpx.AsyncClient) -> None:
     assert r.status_code == 200
     assert r.headers["content-encoding"] == "gzip"
     info, meshes = read_preview(r.content)
-    assert info["version"] == "figure 3"
+    assert info["version"] == "figure 4"
     assert len(meshes) == 1
     r = await client.get("/gestalten/figur/download.zip?top=flat&shape=round&name=Lotta")
     assert r.status_code == 200
@@ -303,12 +303,15 @@ async def test_a_round_figure_in_one_piece(client: httpx.AsyncClient) -> None:
     assert r.status_code == 200
     info, _ = read_preview(r.content)
     keys = [m["key"] for m in info["meshes"]]  # type: ignore[index]
-    assert keys == ["figure", "figure_inlay", "figure3d", "figure3d_accent", "figure3d_details"]
+    assert keys == [
+        "figure", "figure_inlay", "figure3d", "figure3d_clothes", "figure3d_white",
+        "figure3d_details",
+    ]  # fmt: skip
     r = await client.get("/gestalten/figur/druckdateien.zip?motif=unicorn&name=Ida")
     assert r.headers["cache-control"] == "no-store"
     archive = zipfile.ZipFile(io.BytesIO(r.content))
     assert "myboxi-figur-unicorn-ida.3mf" in archive.namelist()
-    assert "Kopf 2: Name und Akzente – Rosa" in archive.read("LIESMICH.txt").decode()
+    assert "Kopf 2: Kleidung – Rosa" in archive.read("LIESMICH.txt").decode()
     assert "snapmaker-u1/myboxi-figur-unicorn-ida.3mf" in archive.namelist()
     # a drawing only stands flat
     r = await client.get("/gestalten/figur/vorschau?motif=drawing&drawing=0123456789abcdef")

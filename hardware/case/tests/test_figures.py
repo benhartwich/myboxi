@@ -115,7 +115,7 @@ def test_query_round_trip_and_digest() -> None:
     assert cfg.query() == {"shape": "heart", "size": "50", "tolerance": "0.25"}
     assert FigureConfig.from_query(cfg.query()) == cfg
     assert cfg.digest() != FigureConfig().digest()
-    assert cfg.color("base") == "#F2B8C6"  # suggested for hearts: rosa
+    assert cfg.color("base") == "#FAFAF7"  # white bases, like toy figures on the box
 
 
 def test_preview_uses_the_case_format() -> None:
@@ -164,11 +164,11 @@ def test_a_figure_prints_with_four_colours_on_one_plate() -> None:
         settings = ET.fromstring(zf.read("Metadata/model_settings.config"))  # noqa: S314
         modelxml = zf.read("3D/3dmodel.model").decode()
     extruders = {m.get("value") for m in settings.iter("metadata") if m.get("key") == "extruder"}
-    assert extruders == {"1", "2", "3", "4"}  # base, name, figure, face
+    assert extruders == {"1", "3", "4"}  # base, figure, face and name
     assert modelxml.count("<item ") == 2  # base and figure, side by side
     readme = zipfile.ZipFile(io.BytesIO(figures.bundle_zip(model))).read("LIESMICH.txt").decode()
     assert "ZUSAMMENSETZEN" in readme
-    assert "Kopf 4: Gesicht – Anthrazit" in readme
+    assert "Kopf 4: Gesicht und Name – Anthrazit" in readme
     assert figures.title(model.config) == "Myboxi Figur Einhorn „Mia“"
 
 
