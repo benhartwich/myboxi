@@ -151,13 +151,13 @@ Unter **app.myboxi.eu/gestalten/figur** („Figur gestalten“) entsteht ein Soc
 - Form: rund, eckig, Herz oder Stern. Spitzen und Ecken sind abgerundet.
 - Größe: 40 oder 50 mm.
 - Oberseite:
-  - **3D-Figur** aus unserer Sammlung: Bär mit Stern, Katze, Hase und Kind mit Herz, Frosch, Einhorn mit Stern. Sie sitzen, die Beine nach vorn, etwa 4,5 bis 5,5 cm hoch (beim 50-mm-Sockel etwas größer).
+  - **3D-Figur** aus unserer Sammlung, wie kleine Spielfiguren: Bär in roter Jacke mit Stern, Katze in blauer Jacke und Hase im rosa Kleid mit Herz, Frosch in gelber Weste, Einhorn mit Stern, Kind im roten Shirt mit Herz. Sie stehen auf zwei Schuhen, etwa 5 cm hoch (beim 50-mm-Sockel etwas größer).
     - Weich modelliert: Kopf, Körper, Arme und Beine gehen ineinander über wie bei einer geformten Figur (Abstandsfelder mit weichen Übergängen, `hardware/case/src/myboxi_case/figures3d.py`).
-    - Aufrecht und in einem Stück mit dem Sockel gedruckt, ohne Stützen und ohne Kleben. Unter allem, was steiler als 45° überhängt, sitzt eine weiche Kehle; was die Figur hält, liegt auf ihrem Schoß auf. Die Tests prüfen, dass keine Schicht in der Luft beginnt.
-    - Vierfarbig auf dem Snapmaker U1: Kopf 1 Sockel, Kopf 2 Name und Akzente (Schnauze, Sohlen, Ohren, Stern oder Herz, Haare), Kopf 3 Figur, Kopf 4 Gesicht. Die Farbe der Akzente wird je Figur vorgeschlagen.
+    - Aufrecht und in einem Stück mit dem Sockel gedruckt, ohne Stützen und ohne Kleben. Unter allem, was steiler als 45° überhängt, sitzt eine weiche Kehle; was die Figur hält, lehnt am Bauch, die Schnauze ruht auf der Brust. Die Tests prüfen, dass keine Schicht in der Luft beginnt.
+    - Vierfarbig auf dem Snapmaker U1: Kopf 1 Sockel und Helles (Schnauze, Stern oder Herz), Kopf 2 Kleidung, Kopf 3 Figur, Kopf 4 Gesicht, Schuhe und Name. Die Kleidung wird je Figur vorgeschlagen.
     - Einfarbig ist das Gesicht eingraviert.
     - Wird es mit Namen zu eng (die Spitze des Sterns), wird die Figur bis zu 14 % kleiner.
-    - Geprüft mit dem Profil des Snapmaker U1 in Snapmaker Orca: druckt ohne Stützen, Druckpause für den Chip wie beim Sockel, etwa 2 Stunden.
+- Die Sockel sind standardmäßig weiß, wie bei Spielfiguren auf der Box; mit Figur ist der Name dunkel wie das Gesicht.
   - **Flach**, um eine vorhandene Figur daraufzukleben, etwa ein Spieltier. Am besten mit 2K-Kleber oder Sekundenkleber-Gel.
   - **Noppen** für Klemmbausteine: Eine Minifigur oder etwas Gebautes steckt direkt darauf. Die Noppen sitzen im üblichen 8-mm-Raster, als rechteckiger Block. Wie fest sie halten, regelt „Spiel für die Noppen“: weniger Spiel heißt dickere Noppen und festeren Halt.
   - **Aufsteller**: dieselben Figuren flach, etwa 5 cm hoch und 6 mm dick, oder eine eigene Zeichnung.

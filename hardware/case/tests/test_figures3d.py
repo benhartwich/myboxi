@@ -44,12 +44,13 @@ def islands(m: Manifold, step: float = 0.2) -> list[tuple[float, float, float]]:
 @pytest.mark.parametrize(("motif", "size"), list(itertools.product(motifs.MOTIFS, (40, 50))))
 def test_every_figure_prints_without_supports(motif: motifs.Motif, size: int) -> None:
     fig = figures3d.figure(motif, figures.FIGURE_SCALE[size])
-    whole = union([fig.body, fig.accent, fig.details])
+    whole = union([fig.body, fig.clothes, fig.white, fig.details])
     assert len([p for p in whole.decompose() if p.volume() > 1.0]) == 1
     # no face steeper than 45° that is wider than a printed line, nothing in mid-air
     assert _overhangs(whole, 2.0) == []
     assert islands(whole) == []
-    assert not fig.accent.is_empty()
+    assert not fig.clothes.is_empty()
+    assert not fig.white.is_empty()
     assert not fig.details.is_empty()  # a face
 
 
@@ -60,7 +61,7 @@ def test_every_figure_stands_on_every_base(motif: str) -> None:
             {"shape": shape, "size": size, "motif": motif, "name": "Mia"}
         )
         model = build_figure(cfg)
-        assert len(model.extras) == 3
+        assert len(model.extras) == 4
         figure = union([e.solid for e in model.extras])
         # one object: base and figure, checked as printed (without the zero-volume seams
         # that joining the colours leaves; a slicer ignores them too)
@@ -85,13 +86,13 @@ def test_three_colours_and_the_base_in_one_object() -> None:
         modelxml = zf.read("3D/3dmodel.model").decode()
         pause = zf.read("Metadata/custom_gcode_per_layer.xml").decode()
     extruders = {m.get("value") for m in settings.iter("metadata") if m.get("key") == "extruder"}
-    assert extruders == {"1", "2", "3", "4"}  # base, name and belly, frog, face
+    assert extruders == {"1", "2", "3", "4"}  # base and white, clothes, frog, face
     assert modelxml.count("<item ") == 1  # printed in one piece
     assert 'top_z="2.21"' in pause  # the chip still goes in below
     bundle = zipfile.ZipFile(io.BytesIO(figures.bundle_zip(model)))
     readme = bundle.read("LIESMICH.txt").decode()
-    assert "Kopf 2: Name und Akzente – Sonnengelb" in readme  # the frog's belly
-    assert "Kopf 4: Gesicht – Anthrazit" in readme
+    assert "Kopf 2: Kleidung – Sonnengelb" in readme  # the frog's vest
+    assert "Kopf 4: Gesicht, Schuhe und Name – Anthrazit" in readme
     assert "ZUSAMMENSETZEN" not in readme  # nothing to glue
     stem = figures.file_stem(model.config)
     assert stem == "myboxi-figur-frog-ida"
@@ -117,9 +118,10 @@ def test_a_larger_base_carries_a_larger_figure() -> None:
 
 def test_colours_and_choices() -> None:
     assert FigureConfig().top == "figure"  # the page opens with a figure
-    assert FigureConfig(motif="unicorn").color_key("accent") == "rosa"  # horn, mane, muzzle
-    assert FigureConfig(top="flat").color_key("accent") == "creme"  # the shape's suggestion
+    assert FigureConfig(motif="unicorn").color_key("accent") == "rosa"  # dress, mane, horn
+    assert FigureConfig(top="flat").color_key("accent") == "anthrazit"  # the name
+    assert FigureConfig().color_key("base") == "weiss"  # white bases
     with pytest.raises(ValidationError, match="nur als Aufsteller"):
         FigureConfig(motif="drawing", drawing="0123456789abcdef")
-    with pytest.raises(figures.FigureError, match="passt nicht vor diese Figur"):
-        build_figure(FigureConfig(shape="star", size=40, name="Maximilian"))
+    # standing figures are slim: even a long name fits in front of them on the small star
+    assert build_figure(FigureConfig(shape="star", size=40, name="Maximilian")).label.area() > 0

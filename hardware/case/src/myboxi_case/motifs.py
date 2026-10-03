@@ -30,20 +30,20 @@ LABELS: dict[str, str] = {
 COLOURS: dict[str, str] = {
     "bear": "braun",
     "cat": "apricot",
-    "bunny": "flieder",
+    "bunny": "sand",
     "frog": "moos",
     "unicorn": "weiss",
-    "person": "himmel",
+    "person": "sand",
     "drawing": "creme",  # light, so the strokes show
 }
-# Suggested accent per motif (the name, and on a round figure belly, snout, ears, horn).
+# Suggested clothes of a round figure per motif (the accent colour).
 ACCENTS: dict[str, str] = {
-    "bear": "creme",
-    "cat": "creme",
-    "bunny": "weiss",
+    "bear": "rot",
+    "cat": "himmel",
+    "bunny": "rosa",
     "frog": "sonne",
     "unicorn": "rosa",
-    "person": "sonne",
+    "person": "rot",
 }
 
 

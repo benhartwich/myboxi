@@ -42,7 +42,7 @@ def test_a_figure_comes_with_its_colours_for_the_u1() -> None:
     expected = [PALETTE[k][1] for k in ("himmel", "rosa", "weiss", "anthrazit")]
     assert project["filament_colour"] == expected  # base, name and horn, figure, face
     readme = bundle.read("LIESMICH.txt").decode()
-    assert "Kopf 2: Name und Akzente – Rosa" in readme
+    assert "Kopf 2: Kleidung – Rosa" in readme
     assert f"{U1_FOLDER}/{stem}.3mf in Snapmaker Orca öffnen" in readme
 
 
