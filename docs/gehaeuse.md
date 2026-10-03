@@ -30,6 +30,8 @@ Lizenzen:
 
 Alles druckt ohne Stützmaterial. Jedes Teil passt auf 180 × 180 mm, also auch auf kleine Drucker.
 
+Die Oberkante des Korpus ist mit 6 mm gerundet. Weil der Korpus kopfüber gedruckt wird, läuft die Rundung zur Oberseite hin in 45° aus; so hängt am Druckbett nichts über. Das Lautsprechergitter „Punkte“ hat runde Löcher auf Ringen wie ein klassischer Lautsprecher; Ohren und Augen sind auf der Rückseite gerundet.
+
 ## Drucken
 
 **Allgemein**

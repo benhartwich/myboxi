@@ -111,6 +111,31 @@ def chamfered_prism(section: CrossSection, height: float, chamfer: float) -> Man
     return Manifold.batch_hull([body, top.translate((0, 0, 0))])
 
 
+def rounded_prism(
+    section: CrossSection, height: float, r_top: float, r_bottom: float = 0.0, steps: int = 10
+) -> Manifold:
+    """Convex prism from z=0 to ``height`` with rounded edges.
+
+    The top edge is a quarter circle of ``r_top`` that turns into 45° towards the top face: the
+    case is printed upside down, and nothing may hang over more than 45° near the print bed.
+    The bottom edge (at the top of the print) is a plain quarter circle of ``r_bottom``.
+    """
+    rings: list[Manifold] = []
+
+    def ring(z: float, inset: float) -> None:
+        rings.append(section.offset(-inset).extrude(0.01).translate((0, 0, z - 0.005)))
+
+    turn = r_top * (1 - 1 / math.sqrt(2))  # inset where the circle runs at 45°
+    for i in range(steps + 1):
+        a = math.radians(45 * i / steps)  # from the side wall up to the 45° point
+        ring(height - r_top + r_top * math.sin(a), r_top - r_top * math.cos(a))
+    ring(height, 2 * turn)  # the straight 45° part to the top face
+    for i in range(steps + 1 if r_bottom > 0 else 1):
+        a = math.radians(90 * i / steps)
+        ring(r_bottom - r_bottom * math.sin(a), r_bottom - r_bottom * math.cos(a))
+    return Manifold.batch_hull(rings)
+
+
 def xz_slab(section: CrossSection, y0: float, y1: float) -> Manifold:
     """``section`` drawn in x/z (as its x/y) as a solid between y0 and y1."""
     # rotate((90, 0, 0)) maps (u, v, w) to (u, -w, v): extrude along w, then move into place.

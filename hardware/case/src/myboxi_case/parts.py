@@ -20,13 +20,13 @@ from myboxi_case.config import CaseConfig
 from myboxi_case.geom import (
     bounds,
     box,
-    chamfered_prism,
     circle,
     cylinder_y,
     cylinder_z,
     prism,
     profile,
     rect,
+    rounded_prism,
     rounded_rect,
     section_union,
     union,
@@ -34,7 +34,7 @@ from myboxi_case.geom import (
 )
 from myboxi_case.layout import (
     BASE,
-    CHAMFER,
+    BOTTOM_ROUND,
     COLUMN_R,
     ENGRAVE,
     PANEL_T,
@@ -48,6 +48,7 @@ from myboxi_case.layout import (
     STANDOFF_R,
     SYMBOLS,
     TOP,
+    TOP_ROUND,
     WALL,
     WINDOW_R,
     Layout,
@@ -56,6 +57,7 @@ from myboxi_case.layout import (
 PILOT_M3 = {"self_tap": 1.25, "insert": 2.0}  # radius: self-tapping M3, or M3 heat-set insert
 PILOT_M25 = {"self_tap": 1.1, "insert": 1.75}
 EAR_T = 5.0
+EAR_ROUND = 2.0
 EAR_TENON = (16.0, 4.6, 6.0)  # width, thickness, depth below the top
 
 
@@ -98,7 +100,7 @@ class Geometry:
 
     @property
     def outer_solid(self) -> Manifold:
-        return chamfered_prism(self.outline, self.lay.height, CHAMFER)
+        return rounded_prism(self.outline, self.lay.height, TOP_ROUND, BOTTOM_ROUND)
 
     def pilot(self, table: dict[str, float]) -> float:
         return table[self.cfg.fastening]
@@ -379,7 +381,10 @@ def ear(g: Geometry, x: float, y: float) -> Shape:
     outline = top.outline.translate((x, h))
     tenon = rect(x - top.tenon / 2, h - TOP - td + 2.0, x + top.tenon / 2, h + 0.5)
     y0 = y - EAR_T / 2
-    solid = union([xz_slab(outline, y0, y0 + EAR_T), xz_slab(tenon, y0, y0 + tt)])
+    # Rounded along the back, which is on top when printed; flat front on the print bed.
+    plate = rounded_prism(outline, EAR_T, 0.0, EAR_ROUND)  # rounded at z = 0: the back
+    plate = plate.rotate((90, 0, 0)).translate((0, y0 + EAR_T, 0))
+    solid = union([plate, xz_slab(tenon, y0, y0 + tt)])
     inlay = xz_slab(top.inlay.translate((x, h)), y0 - 0.01, y0 + ENGRAVE)
     return Shape(solid - inlay, inlay)
 

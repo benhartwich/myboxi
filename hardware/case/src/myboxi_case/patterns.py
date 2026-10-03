@@ -71,11 +71,27 @@ def _hex_grid(radius: float, pitch: float, item: CrossSection, item_r: float) ->
     return section_union(items)
 
 
+def _rings(radius: float, pitch: float, hole_r: float) -> CrossSection:
+    """Round holes on concentric rings, like a classic speaker: one in the middle, then rings
+    ``pitch`` apart with the holes ``pitch`` apart along each ring."""
+    holes: list[CrossSection] = [CrossSection.circle(hole_r)]
+    ring = 1
+    while ring * pitch + hole_r <= radius:
+        r = ring * pitch
+        n = max(6, int(2 * math.pi * r / pitch))
+        turn = math.pi / n if ring % 2 else 0.0  # neighbouring rings staggered
+        for i in range(n):
+            a = 2 * math.pi * i / n + turn
+            holes.append(CrossSection.circle(hole_r).translate((r * math.cos(a), r * math.sin(a))))
+        ring += 1
+    return section_union(holes)
+
+
 def grille(kind: Grille, radius: float) -> CrossSection:
     """Openings in front of the speaker, inside a circle of ``radius``."""
     match kind:
         case "dots":
-            return _hex_grid(radius, 5.4, CrossSection.circle(1.75), 1.75)
+            return _rings(radius, 4.7, 1.75)
         case "stars":
             return _hex_grid(radius, 7.3, star(3.4, 2.0), 3.4)
         case "hearts":
