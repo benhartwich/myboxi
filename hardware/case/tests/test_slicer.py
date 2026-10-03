@@ -56,5 +56,5 @@ def test_a_case_comes_with_its_colours_for_the_u1() -> None:
     for name in u1:
         project = _project(bundle.read(name))
         assert project is not None
-        assert project["filament_colour"][:3] == export.head_colours(cfg)
+        assert project["filament_colour"] == export.head_colours(cfg)
     assert all(_project(bundle.read(name)) is None for name in neutral)

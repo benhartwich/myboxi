@@ -66,21 +66,20 @@ def topper(character: Character) -> Topper:
             return Topper("Auge", _above(circle(13.0, 0, 12.0)), circle(5.5, 0, 13.0), 26.0, 16.0)
 
 
-def face(character: Character, r: float) -> list[CrossSection]:
-    """Marks around a speaker grille of radius ``r`` (the speaker radius) at the origin."""
+def face(character: Character, r: float, snout: bool = False) -> list[CrossSection]:
+    """Marks around a speaker grille of radius ``r`` (the speaker radius) at the origin. With a
+    sculpted ``snout`` (faces.py), which has nose and mouth, only eyes, whiskers and lashes."""
     match character:
         case "bear":
-            return [
-                eye().translate((-16.0, 29.0)),
-                eye().translate((16.0, 29.0)),
-                nose().translate((0, 21.5)),
-                circle(r + 2.2) - circle(r + 1.0),
-            ]
+            eyes = [eye().translate((-16.0, 29.0)), eye().translate((16.0, 29.0))]
+            if snout:
+                return eyes
+            return [*eyes, nose().translate((0, 21.5)), circle(r + 2.2) - circle(r + 1.0)]
         case "cat":
             marks = [
                 _capsule(-16.0, 26.0, -16.0, 31.0, 6.0),
                 _capsule(16.0, 26.0, 16.0, 31.0, 6.0),
-                nose(8.0).translate((0, 23.0)),
+                *([] if snout else [nose(8.0).translate((0, 23.0))]),
             ]
             for side in (-1, 1):
                 for k in (-1, 0, 1):
@@ -89,9 +88,11 @@ def face(character: Character, r: float) -> list[CrossSection]:
                     )
             return marks
         case "bunny":
+            eyes = [eye(4.0).translate((-15.0, 28.0)), eye(4.0).translate((15.0, 28.0))]
+            if snout:
+                return eyes
             return [
-                eye(4.0).translate((-15.0, 28.0)),
-                eye(4.0).translate((15.0, 28.0)),
+                *eyes,
                 nose(7.0).translate((0, 22.5)),
                 rounded_rect(-3.8, -27.0, -0.5, -22.5, 0.8),
                 rounded_rect(0.5, -27.0, 3.8, -22.5, 0.8),
@@ -107,9 +108,12 @@ def face(character: Character, r: float) -> list[CrossSection]:
                     x0, z0 = cx + 5.0 * math.cos(a), cz + 5.0 * math.sin(a)
                     x1, z1 = cx + 8.0 * math.cos(a), cz + 8.0 * math.sin(a)
                     marks.append(_capsule(x0, z0, x1, z1, 1.3))
-                marks.append(circle(3.5, side * 25.0, 18.0))
+                if not snout:
+                    marks.append(circle(3.5, side * 25.0, 18.0))
             return marks
         case "frog":
+            if snout:
+                return []  # its eyes sit on top; the snout has nostrils and the smile
             smile = circle(27.4, 0, 6.0) - circle(26.0, 0, 6.0)
             keep = CrossSection.batch_hull(
                 [circle(0.1, 0, 6.0), circle(0.1, -60.0, -36.0), circle(0.1, 60.0, -36.0)]
@@ -121,5 +125,5 @@ def face(character: Character, r: float) -> list[CrossSection]:
             ]
 
 
-def face_marks(character: Character, r: float) -> CrossSection:
-    return section_union(face(character, r))
+def face_marks(character: Character, r: float, snout: bool = False) -> CrossSection:
+    return section_union(face(character, r, snout))
