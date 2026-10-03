@@ -314,3 +314,15 @@ async def test_a_round_figure_in_one_piece(client: httpx.AsyncClient) -> None:
     r = await client.get("/gestalten/figur/vorschau?motif=drawing&drawing=0123456789abcdef")
     assert r.status_code == 422
     assert "nur als Aufsteller" in r.text
+
+
+async def test_animal_boxes_choose_a_snout_colour(client: httpx.AsyncClient) -> None:
+    bear = (await client.get("/gestalten?form=bear")).text
+    assert 'data-show-when="form=bear|cat|bunny|unicorn|frog">' in bear  # visible
+    assert 'name="color_muzzle" value="creme" checked' in bear
+    radio = (await client.get("/gestalten?form=radio")).text
+    assert 'data-show-when="form=bear|cat|bunny|unicorn|frog" hidden' in radio
+    r = await client.get("/gestalten/druckdateien.zip?form=frog&name=Ida&color_muzzle=rosa")
+    assert r.status_code == 200
+    readme = zipfile.ZipFile(io.BytesIO(r.content)).read("LIESMICH.txt").decode()
+    assert "Kopf 4: Schnauze – Rosa" in readme

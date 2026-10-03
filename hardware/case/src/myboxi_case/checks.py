@@ -7,8 +7,10 @@ option would otherwise only reveal on the printer (docs/gehaeuse.md).
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 from manifold3d import CrossSection, Manifold, OpType
 
 from myboxi_case import patterns
@@ -93,13 +95,35 @@ def _area2(t: list[tuple[float, float]]) -> float:
     return (bx - ax) * (cy - ay) - (cx - ax) * (by - ay)
 
 
-def _thin_area(section: CrossSection, width: float) -> float:
-    """Area of material thinner than ``width`` (morphological opening)."""
+def _thin_area(section: CrossSection, width: float, at_holes: bool = True) -> float:
+    """Area of material thinner than ``width`` (morphological opening). Without ``at_holes``,
+    slivers along openings do not count: where a hole leaves a sloped surface, every layer has
+    a tapering lip around it, which is no thin wall."""
     if section.is_empty():
         return 0.0
     opened = section.offset(-width / 2).offset(width / 2)
+    near = CrossSection() if at_holes else _openings(section).offset(width)
     # Sharp corners lose their tips in the opening; only count real slivers.
-    return sum(part.area() for part in (section - opened).decompose() if part.area() > 0.25)
+    return sum(
+        part.area()
+        for part in (section - opened).decompose()
+        if part.area() > 0.25 and (near.is_empty() or (part ^ near).is_empty())
+    )
+
+
+def _openings(section: CrossSection) -> CrossSection:
+    """The holes inside a cross section (its inner contours, filled)."""
+    raw: Any = section
+    rings: list[npt.NDArray[np.float64]] = [
+        np.asarray(ring, dtype=np.float64) for ring in raw.to_polygons()
+    ]
+    outer = [ring for ring in rings if _ring_area(ring) > 0]
+    return polygons([[(float(x), float(y)) for x, y in ring.tolist()] for ring in outer]) - section
+
+
+def _ring_area(pts: npt.NDArray[np.float64]) -> float:
+    x, y = pts[:, 0], pts[:, 1]
+    return float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)) / 2
 
 
 def check_piece(p: Piece) -> list[Issue]:
@@ -120,9 +144,13 @@ def check_piece(p: Piece) -> list[Issue]:
     allowed = 26.0 if p.key == "figure" else MAX_BRIDGE  # closed tag pocket: print pause
     for span in _overhangs(solid, allowed):
         issues.append(Issue("overhang", p.key, f"unsupported region {span:.1f} mm wide"))
+    # The snout of an animal box is checked with its colours together (they print as one),
+    # and the sound holes in its sloped front leave lips that are no thin walls.
+    snout = p.key == "snout"
+    whole = p.printed(p.solid + p.inlay) if snout and not p.inlay.is_empty() else solid
     z = 1.0
     while z < z1 - 0.5:
-        area = _thin_area(solid.slice(z), MIN_FEATURE)
+        area = _thin_area(whole.slice(z), MIN_FEATURE, at_holes=not snout)
         if area > 2.0:
             issues.append(
                 Issue("thin", p.key, f"{area:.1f} mm² thinner than {MIN_FEATURE} mm at z={z:.1f}")

@@ -26,9 +26,15 @@ Lizenzen:
 | Boden | liegend | Abstandshalter für den Pi, Halter für den Verstärker, zwei Kabelbinder-Halter, bei Bedarf Powerbank-Fach mit Schlitzen für ein Klettband |
 | Lautsprecherring | liegend | klemmt den Lautsprecher an die Front |
 | Ohren, Augen, Horn | liegend, Horn stehend | nur bei Tierfiguren |
+| Schnauze | auf dem flachen Rücken | nur bei Tierfiguren: plastisch, mit Nase, Mund und Tonlöchern; wird in die Vertiefung der Front geklebt |
 | Figurensockel | liegend | Druckpause bei 2,2 mm, NFC-Tag einlegen |
 
 Alles druckt ohne Stützmaterial. Jedes Teil passt auf 180 × 180 mm, also auch auf kleine Drucker.
+
+**Tierboxen mit Schnauze:** Bär, Katze, Hase, Einhorn und Frosch bekommen eine plastische Schnauze im weichen Stil der Figuren (`hardware/case/src/myboxi_case/faces.py`), mit Nase und Mund in der Akzentfarbe und einer eigenen Farbe (Kopf 4, je Tier vorgeschlagen). Sie liegt beim Druck auf ihrem flachen Rücken und hängt nirgends über.
+- Hinter ihr hat die Front eine große Öffnung über dem Lautsprecher, ringsum bleibt ein Rand zum Kleben. Die Schnauze hat eigene Tonlöcher, die entlang der Oberfläche geneigt sind (höchstens 35°), damit an der Wölbung keine Messerkanten entstehen. Sie dämpft den Klang etwas.
+- Sie wird in eine 0,6 mm tiefe Vertiefung der Front geklebt (2K-Kleber oder Sekundenkleber-Gel) und ist so groß, dass sie nicht als Kleinteil gilt (passt nicht in den Kleinteile-Zylinder nach EN 71-1).
+- Augen, Schnurrhaare und Wimpern bleiben als Einlage auf der Front.
 
 Die Oberkante des Korpus ist mit 6 mm gerundet. Weil der Korpus kopfüber gedruckt wird, läuft die Rundung zur Oberseite hin in 45° aus; so hängt am Druckbett nichts über. Das Lautsprechergitter „Punkte“ hat runde Löcher auf Ringen wie ein klassischer Lautsprecher; Ohren und Augen sind auf der Rückseite gerundet.
 

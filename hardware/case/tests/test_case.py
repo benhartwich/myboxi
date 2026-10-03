@@ -126,13 +126,15 @@ def test_checks_find_a_collision() -> None:
 def test_parts_are_single_watertight_bodies() -> None:
     model = build(CaseConfig(form="bear", name="Mia"))
     keys = [p.key for p in model.pieces]
-    assert keys == ["body", "front", "base", "speaker_ring", "ear_left", "ear_right", "figure"]
+    assert keys == [
+        "body", "front", "base", "speaker_ring", "ear_left", "ear_right", "snout", "figure",
+    ]  # fmt: skip
     for p in model.pieces:
         solid = p.printed(p.solid)
         assert solid.status().name == "NoError"
         assert bbox(solid)[2] == pytest.approx(0.0, abs=1e-6)
     front = model.piece("front")
-    assert not front.inlay.is_empty()  # name, eyes and nose as a second colour
+    assert not front.inlay.is_empty()  # name and eyes as a second colour
 
 
 def test_unicorn_has_a_horn_in_the_accent_colour() -> None:

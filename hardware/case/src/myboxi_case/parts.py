@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 from manifold3d import CrossSection, Manifold
 
-from myboxi_case import characters, patterns, text
+from myboxi_case import characters, faces, patterns, text
 from myboxi_case.components import AMP, BOARDS, PN532, board_footprint, board_holes
 from myboxi_case.config import CaseConfig
 from myboxi_case.geom import (
@@ -232,9 +232,14 @@ def front(g: Geometry) -> Shape:
     panel = xz_slab(rect(px0 + tol, z0, px1 - tol, z1), WALL, g.panel_back)
     sx, sz = lay.speaker
     r = cfg.speaker / 2
-    panel -= xz_slab(
-        patterns.grille(cfg.grille, r - 2.0).translate((sx, sz)), WALL - 1.0, g.panel_back + 1.0
-    )
+    openings = patterns.grille(cfg.grille, r - 2.0)
+    snout = _snout(g)
+    if snout is not None:
+        # Behind the snout: one opening for the sound, and a recess that holds the snout.
+        openings = (openings - snout.footprint.offset(1.0)) + snout.opening
+        seat = snout.footprint.offset(0.2).translate((sx, sz))
+        panel -= xz_slab(seat, WALL - 0.01, WALL + faces.RECESS)
+    panel -= xz_slab(openings.translate((sx, sz)), WALL - 1.0, g.panel_back + 1.0)
 
     # Speaker seat on the back: centring ring and three bosses for the clamp ring.
     back = g.panel_back
@@ -254,13 +259,37 @@ def front(g: Geometry) -> Shape:
         _, by0, _, by1 = bounds(label)
         marks.append(label.translate(((nx0 + nx1) / 2, (nz0 + nz1) / 2 - (by0 + by1) / 2)))
     if lay.character is not None:
-        face = characters.face_marks(lay.character, r).translate((sx, sz))
-        # Keep a bar between the face and the grille openings.
-        marks.append(face - patterns.grille(cfg.grille, r - 2.0).translate((sx, sz)).offset(1.0))
+        face = characters.face_marks(lay.character, r, snout is not None).translate((sx, sz))
+        # Keep a bar between the face and the grille openings; nothing under the snout.
+        face -= patterns.grille(cfg.grille, r - 2.0).translate((sx, sz)).offset(1.0)
+        if snout is not None:
+            face -= snout.footprint.offset(1.5).translate((sx, sz))
+        marks.append(face)
     if not marks:
         return Shape(solid, Manifold())
     inlay = _engrave_front(section_union(marks))
     return Shape(solid - inlay, inlay)
+
+
+def _snout(g: Geometry) -> faces.Face | None:
+    if g.lay.character is None:
+        return None
+    return faces.face(g.lay.character, g.cfg.speaker / 2)
+
+
+def snout(g: Geometry) -> Shape:
+    """The sculpted face of an animal box, glued into its recess on the front panel. Drawn
+    around the speaker centre with z towards the viewer (faces.py); here turned onto the panel:
+    its back on the recess floor, its front towards -y."""
+    face = _snout(g)
+    if face is None:
+        raise ValueError("only animal boxes have a snout")
+    sx, sz = g.lay.speaker
+
+    def place(m: Manifold) -> Manifold:
+        return m.rotate((90, 0, 0)).translate((sx, WALL + faces.RECESS, sz))
+
+    return Shape(place(face.snout), place(face.details))
 
 
 def speaker_bosses(lay: Layout, diameter: float) -> list[tuple[float, float]]:

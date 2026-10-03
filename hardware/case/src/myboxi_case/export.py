@@ -11,7 +11,6 @@ import struct
 import zipfile
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal
 from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
@@ -20,7 +19,7 @@ from manifold3d import Manifold
 
 from myboxi_case import GENERATOR_VERSION
 from myboxi_case.build import CaseModel, Piece
-from myboxi_case.config import PALETTE, CaseConfig
+from myboxi_case.config import PALETTE, CaseConfig, Role
 from myboxi_case.geom import bbox, mesh_arrays
 from myboxi_case.slicer import U1_FOLDER, u1_project_settings
 
@@ -140,9 +139,12 @@ def threemf(model: CaseModel, *, u1: bool = False) -> list[bytes]:
     ]
 
 
+PLURAL = {"Ohr": "Ohren", "Auge": "Augen"}
+
+
 def head_colours(cfg: CaseConfig) -> list[str]:
-    """Heads 1 to 3: body and base, front, inlays."""
-    return [cfg.color("body"), cfg.color("front"), cfg.color("accent")]
+    """Heads 1 to 4: body and base, front, inlays, the snout of an animal box."""
+    return [cfg.color("body"), cfg.color("front"), cfg.color("accent"), cfg.color("muzzle")]
 
 
 def _threemf_plate(
@@ -378,7 +380,9 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
     multi = cfg.colors == "multi"
     labels = {p.key: p.label for p in model.pieces}
 
-    def colour(role: Literal["body", "front", "accent"]) -> str:
+    ears = PLURAL.get(labels.get("ear_left", ""), "Ohren")
+
+    def colour(role: Role) -> str:
         return PALETTE[cfg.color_key(role)][0]
 
     lines = [
@@ -409,6 +413,7 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
             f"    Kopf 2: {labels['front']}, {labels['speaker_ring']} – {colour('front')}",
             "    Kopf 3: Einlagen (Name, Symbole, Figurenring) und Figurensockel – "
             + colour("accent"),
+            *([f"    Kopf 4: {labels['snout']} – {colour('muzzle')}"] if "snout" in labels else []),
             "  Ohne Mehrfarbdrucker: Einlagen-Teile löschen, die Gravur bleibt sichtbar.",
         ]
     lines += [
@@ -425,7 +430,7 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
         "  4 Schrauben M2,5 x 6 (Pi)"
         + ("; Gewindeeinsätze M3 und M2,5" if cfg.fastening == "insert" else ", selbstschneidend"),
         "",
-        "ZUSAMMENBAU (ohne Kleber)",
+        "ZUSAMMENBAU" + ("" if "snout" in labels else " (ohne Kleber)"),
         "  1. Lautsprecher in die Front legen, Lautsprecherring aufschrauben.",
         "  2. NFC-Modul von unten in den Rahmen unter der Figurenmarke drücken (rastet ein).",
         "  3. Taster oben einsetzen und verschrauben, USB-C-Buchse hinten einschrauben.",
@@ -441,6 +446,16 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
         ),
         "  6. Front von unten in die Schienen hinter dem Fenster schieben.",
         "  7. Boden einsetzen und mit 4 Schrauben M3 festschrauben.",
+        *(
+            [
+                f"  8. {ears} oben in die Schlitze und die Schnauze in die Vertiefung",
+                "     auf der Front kleben (2K-Kleber oder Sekundenkleber-Gel). Die Schnauze",
+                "     hat eigene Tonlöcher; hinter ihr ist die Front offen. Gut trocknen",
+                "     lassen und prüfen, dass alles fest sitzt, bevor ein Kind damit spielt.",
+            ]
+            if "snout" in labels
+            else []
+        ),
         "",
         'Ohne Löten: Pi Zero 2 W mit vorgelöteter Stiftleiste ("WH") kaufen, Taster mit',
         "Anschlusslitzen, Dupont-Kabel Buchse/Buchse 20 cm. Beim PN532 liegt die Stiftleiste",

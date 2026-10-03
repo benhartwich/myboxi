@@ -391,11 +391,11 @@ DESIGNS: dict[str, Callable[[], Design]] = {
 # --- meshing -------------------------------------------------------------------------------------
 
 
-def _grid(lo: Sequence[float], hi: Sequence[float], step: float) -> list[Field]:
+def grid_axes(lo: Sequence[float], hi: Sequence[float], step: float) -> list[Field]:
     return [np.arange(lo[i], hi[i] + step, step) for i in range(3)]
 
 
-def _mesh(field: Field, axes: list[Field], step: float) -> Manifold:
+def mesh_field(field: Field, axes: list[Field], step: float) -> Manifold:
     """The surface where ``field`` (positive inside, sampled on ``axes``) crosses zero."""
     nx, ny, nz = (int(n) for n in field.shape)
     values: list[float] = field.ravel().tolist()
@@ -427,30 +427,30 @@ def _solid(shape: Shape) -> Manifold:
     b = shape.bounds()
     lo = [b[0] - 2.0, b[1] - 2.0, -ROOT - STEP]
     hi = [b[3] + 2.0, b[4] + 2.0, b[5] + 2.0]
-    axes = _grid(lo, hi, STEP)
+    axes = grid_axes(lo, hi, STEP)
     x, y, z = np.meshgrid(*axes, indexing="ij")
     field = np.minimum(-shape.sdf((x, y, z)), z + ROOT)
     for k in range(field.shape[2] - 2, -1, -1):  # top down: a layer carries the one above
         field[:, :, k] = np.maximum(field[:, :, k], field[:, :, k + 1] - STEP)
     field = np.minimum(field, z + ROOT)
-    return _mesh(field, axes, STEP).simplify(SIMPLIFY)
+    return mesh_field(field, axes, STEP).simplify(SIMPLIFY)
 
 
-def _region(shapes: Sequence[Shape], margin: float = 0.25) -> Manifold:
+def region_mesh(shapes: Sequence[Shape], margin: float = 0.25) -> Manifold:
     parts: list[Manifold] = []
     for shape in shapes:
         b = shape.bounds()
         lo = [b[i] - 1.0 - margin for i in range(3)]
         hi = [b[i + 3] + 1.0 + margin for i in range(3)]
-        axes = _grid(lo, hi, REGION_STEP)
+        axes = grid_axes(lo, hi, REGION_STEP)
         x, y, z = np.meshgrid(*axes, indexing="ij")
-        region = _mesh(margin - shape.sdf((x, y, z)), axes, REGION_STEP)
+        region = mesh_field(margin - shape.sdf((x, y, z)), axes, REGION_STEP)
         parts.append(region.simplify(SIMPLIFY))  # before cutting: colours share exact faces
     parts = [p for p in parts if not p.is_empty()]
     return Manifold.batch_boolean(parts, OpType.Add) if parts else Manifold()
 
 
-def _clean(m: Manifold) -> Manifold:
+def drop_slivers(m: Manifold) -> Manifold:
     """Without the slivers that splitting into colours leaves behind."""
     parts = [part for part in m.decompose() if part.volume() > 0.1]
     return Manifold.batch_boolean(parts, OpType.Add) if parts else Manifold()
@@ -459,9 +459,9 @@ def _clean(m: Manifold) -> Manifold:
 def _build(motif: Motif) -> Figure3D:
     design = DESIGNS[motif]()
     solid = _solid(design.shape)
-    detail = _clean(solid ^ _region(design.details))
-    accent = _clean((solid ^ _region(design.accents)) - detail)
-    return Figure3D(_clean(solid - accent - detail), accent, detail)
+    detail = drop_slivers(solid ^ region_mesh(design.details))
+    accent = drop_slivers((solid ^ region_mesh(design.accents)) - detail)
+    return Figure3D(drop_slivers(solid - accent - detail), accent, detail)
 
 
 # --- cache ---------------------------------------------------------------------------------------

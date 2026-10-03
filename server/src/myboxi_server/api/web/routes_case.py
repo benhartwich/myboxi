@@ -46,17 +46,20 @@ router = APIRouter(dependencies=[Depends(csrf_protect)])
 FORMS = (
     ("radio", "Radio", "Breit, Lautsprecher links, Name rechts."),
     ("cube", "Würfel", "Kompakt und schlicht, 11 cm Kantenlänge."),
-    ("bear", "Bär", "Runde Ohren, Schnauze um den Lautsprecher."),
-    ("unicorn", "Einhorn", "Gedrehtes Horn, spitze Ohren, schlafende Augen."),
-    ("cat", "Katze", "Spitze Ohren und Schnurrhaare."),
-    ("bunny", "Hase", "Lange Ohren und kleine Zähne."),
-    ("frog", "Frosch", "Glubschaugen oben und ein breites Lächeln."),
+    ("bear", "Bär", "Runde Ohren und eine plastische Schnauze mit Nase."),
+    ("unicorn", "Einhorn", "Gedrehtes Horn, schlafende Augen, plastische Schnauze."),
+    ("cat", "Katze", "Spitze Ohren, Schnurrhaare und eine plastische Schnauze."),
+    ("bunny", "Hase", "Lange Ohren, Schnäuzchen mit kleinen Zähnen."),
+    ("frog", "Frosch", "Glubschaugen oben und ein breites, plastisches Lächeln."),
 )
 GRILLES = (("dots", "Punkte"), ("stars", "Sterne"), ("hearts", "Herzen"), ("lines", "Streifen"))
+ANIMALS = "form=bear|cat|bunny|unicorn|frog"
+# field, role, label, shown when (data-show-when)
 COLOR_ROLES = (
-    ("color_body", "body", "Gehäuse"),
-    ("color_front", "front", "Front"),
-    ("color_accent", "accent", "Name und Symbole"),
+    ("color_body", "body", "Gehäuse", None),
+    ("color_front", "front", "Front", None),
+    ("color_accent", "accent", "Name und Symbole", None),
+    ("color_muzzle", "muzzle", "Schnauze", ANIMALS),
 )
 
 
@@ -104,7 +107,13 @@ async def case_page(request: Request, session: OptionalSession, settings: Settin
         "defaults_json": json.dumps(defaults, separators=(",", ":")),
         "suggested_json": json.dumps(
             {
-                form: dict(zip(("color_body", "color_front", "color_accent"), colors, strict=True))
+                form: dict(
+                    zip(
+                        ("color_body", "color_front", "color_accent", "color_muzzle"),
+                        colors,
+                        strict=True,
+                    )
+                )
                 for form, colors in SUGGESTED.items()
             },
             separators=(",", ":"),
@@ -114,6 +123,7 @@ async def case_page(request: Request, session: OptionalSession, settings: Settin
         "form_label": next(label for key, label, _ in FORMS if key == cfg.form),
         "grilles": GRILLES,
         "color_roles": COLOR_ROLES,
+        "show": _shown(cfg),
         "palette": PALETTE,
         "max_name": MAX_NAME,
         "error": error,
@@ -233,7 +243,7 @@ def _figure_message(exc: ValidationError) -> str:
     return "Diese Auswahl gibt es nicht. Bitte wähle aus den Optionen."
 
 
-def _shown(cfg: FigureConfig) -> Callable[[str], Markup]:
+def _shown(cfg: object) -> Callable[[str], Markup]:
     """``data-show-when="top=figure|standee"`` for case.js, hidden already when it does not
     apply, so the page is right without JavaScript."""
 

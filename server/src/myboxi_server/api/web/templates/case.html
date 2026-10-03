@@ -43,8 +43,8 @@
       <span class="muted">Bis {{ max_name }} Zeichen, auch mit Umlauten. Leer lassen geht auch.</span>
     </label>
 
-    {% for field, role, label in color_roles %}
-    <fieldset class="field">
+    {% for field, role, label, rule in color_roles %}
+    <fieldset class="field" {% if rule %}{{ show(rule) }}{% endif %}>
       <legend>Farbe {{ label }}</legend>
       <div class="swatches">
         {% for key, color in palette.items() %}

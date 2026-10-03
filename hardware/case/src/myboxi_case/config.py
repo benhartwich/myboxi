@@ -50,17 +50,19 @@ ColorKey = Literal[
 ]  # fmt: skip
 
 
-# Colours that suit each form (body, front, accent); used while none are chosen.
-SUGGESTED: dict[str, tuple[str, str, str]] = {
-    "radio": ("sand", "moos", "creme"),
-    "cube": ("salbei", "creme", "moos"),
-    "bear": ("braun", "sand", "anthrazit"),
-    "unicorn": ("weiss", "flieder", "sonne"),
-    "cat": ("apricot", "creme", "anthrazit"),
-    "bunny": ("flieder", "weiss", "anthrazit"),
-    "frog": ("moos", "salbei", "anthrazit"),
+# Colours that suit each form (body, front, accent, snout); used while none are chosen. The
+# snout is the sculpted face of the animal boxes.
+SUGGESTED: dict[str, tuple[str, str, str, str]] = {
+    "radio": ("sand", "moos", "creme", "creme"),
+    "cube": ("salbei", "creme", "moos", "creme"),
+    "bear": ("braun", "sand", "anthrazit", "creme"),
+    "unicorn": ("weiss", "flieder", "sonne", "rosa"),
+    "cat": ("apricot", "creme", "anthrazit", "weiss"),
+    "bunny": ("flieder", "weiss", "anthrazit", "rosa"),
+    "frog": ("moos", "salbei", "anthrazit", "sonne"),
 }
-ROLES = ("body", "front", "accent")
+ROLES = ("body", "front", "accent", "muzzle")
+Role = Literal["body", "front", "accent", "muzzle"]
 
 
 def _squash(value: object) -> object:
@@ -94,6 +96,7 @@ class CaseConfig(BaseModel):
     color_body: ColorKey | None = None
     color_front: ColorKey | None = None
     color_accent: ColorKey | None = None
+    color_muzzle: ColorKey | None = None
     tolerance: Annotated[float, Field(ge=0.1, le=0.4)] = 0.2
     fastening: Fastening = "self_tap"
 
@@ -135,9 +138,14 @@ class CaseConfig(BaseModel):
         data = f"{GENERATOR_VERSION}\n{self.canonical_json()}".encode()
         return hashlib.sha256(data).hexdigest()
 
-    def color_key(self, role: Literal["body", "front", "accent"]) -> str:
-        chosen = {"body": self.color_body, "front": self.color_front, "accent": self.color_accent}
+    def color_key(self, role: Role) -> str:
+        chosen = {
+            "body": self.color_body,
+            "front": self.color_front,
+            "accent": self.color_accent,
+            "muzzle": self.color_muzzle,
+        }
         return chosen[role] or SUGGESTED[self.form][ROLES.index(role)]
 
-    def color(self, role: Literal["body", "front", "accent"]) -> str:
+    def color(self, role: Role) -> str:
         return PALETTE[self.color_key(role)][1]

@@ -12,8 +12,8 @@ from myboxi_case.config import CaseConfig
 from myboxi_case.geom import bbox
 from myboxi_case.layout import Layout, layout_for
 
-# Tool heads of a multi-colour printer (e.g. Snapmaker U1): body, front, accent.
-TOOL_BODY, TOOL_FRONT, TOOL_ACCENT = 1, 2, 3
+# Tool heads of a multi-colour printer (e.g. Snapmaker U1): body, front, accent, snout.
+TOOL_BODY, TOOL_FRONT, TOOL_ACCENT, TOOL_MUZZLE = 1, 2, 3, 4
 
 
 @dataclass(frozen=True)
@@ -94,6 +94,19 @@ def build(cfg: CaseConfig) -> CaseModel:
             pieces.append(
                 piece(key, label, parts.ear(g, x, y), body_c, TOOL_BODY, (90, 0, 0), (0, 0, 1.4))
             )
+    if layout.character is not None:
+        # Printed lying on its flat back: its front (-y) up.
+        pieces.append(
+            piece(
+                "snout",
+                "Schnauze",
+                parts.snout(g),
+                cfg.color("muzzle") if multi else body_c,
+                TOOL_MUZZLE if multi else TOOL_BODY,
+                (-90, 0, 0),
+                (0, -1.6, 0),
+            )
+        )
     if layout.character == "unicorn":
         pieces.append(
             piece(
