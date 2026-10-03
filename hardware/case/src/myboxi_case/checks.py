@@ -16,7 +16,7 @@ from manifold3d import CrossSection, Manifold, OpType
 from myboxi_case import patterns
 from myboxi_case.build import CaseModel, Piece
 from myboxi_case.components import PCB, PN532
-from myboxi_case.geom import bbox, bounds, box, mesh_arrays, polygons
+from myboxi_case.geom import bbox, bounds, box, mesh_arrays, polygons, union
 from myboxi_case.layout import TOP
 
 MAX_PRINT = 180.0  # every part fits small printers too (A1 mini, Prusa MINI)
@@ -162,7 +162,7 @@ def check_piece(p: Piece) -> list[Issue]:
 
 def check_assembly(model: CaseModel) -> list[Issue]:
     issues: list[Issue] = []
-    solids = {p.key: p.solid + p.inlay if not p.inlay.is_empty() else p.solid for p in model.pieces}
+    solids = {p.key: union([p.solid, p.inlay, p.panel]) for p in model.pieces}
     for c in model.components:
         for key, solid in solids.items():
             if key == "figure":

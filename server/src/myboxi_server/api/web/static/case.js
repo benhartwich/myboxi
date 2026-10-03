@@ -24,7 +24,7 @@ let coloursChosen = [...new URLSearchParams(location.search).keys()].some((k) =>
 const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const EXPLODE_MM = 45;
-const HIDDEN_WHEN_INSIDE = new Set(['body', 'body_inlay', 'front', 'front_inlay']);
+const HIDDEN_WHEN_INSIDE = new Set(['body', 'body_inlay', 'body_panel', 'front', 'front_inlay']);
 
 function query() {
   const params = new URLSearchParams();

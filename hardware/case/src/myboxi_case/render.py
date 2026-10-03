@@ -150,6 +150,8 @@ def assembled(model: CaseModel, *, inside: bool = False, explode: float = 0.0) -
         items.append(Item(p.solid, p.color, offset))
         if not p.inlay.is_empty():
             items.append(Item(p.inlay, p.inlay_color, offset))
+        if not p.panel.is_empty():
+            items.append(Item(p.panel, p.panel_color, offset))
     if inside:
         items += [Item(c.solid, c.color) for c in model.components]
     return items

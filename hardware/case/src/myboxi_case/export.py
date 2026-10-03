@@ -10,7 +10,7 @@ import json
 import struct
 import zipfile
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from xml.sax.saxutils import escape, quoteattr
 
 import numpy as np
@@ -51,6 +51,7 @@ class Placed:
     solid: Manifold  # print orientation, placed on its plate
     inlay: Manifold
     plate: int
+    panel: Manifold = field(default_factory=Manifold)
 
 
 Rect = tuple[float, float, float, float]
@@ -81,10 +82,11 @@ def _spot(w: float, d: float, taken: list[Rect]) -> tuple[float, float] | None:
 def arrange(pieces: Iterable[Piece]) -> list[Placed]:
     """Print-oriented pieces on U1 plates: bottom-left packing, largest first, turned by 90° when
     that fits better. Pieces that do not fit go to the next plate."""
-    items: list[tuple[Piece, Manifold, Manifold]] = []
+    items: list[tuple[Piece, Manifold, Manifold, Manifold]] = []
     for p in pieces:
         inlay = p.printed(p.inlay) if not p.inlay.is_empty() else Manifold()
-        items.append((p, p.printed(p.solid), inlay))
+        panel = p.printed(p.panel) if not p.panel.is_empty() else Manifold()
+        items.append((p, p.printed(p.solid), inlay, panel))
 
     def area(m: Manifold) -> float:
         x0, y0, _, x1, y1, _ = bbox(m)
@@ -93,7 +95,7 @@ def arrange(pieces: Iterable[Piece]) -> list[Placed]:
     items.sort(key=lambda it: -area(it[1]))
     plates: list[list[Rect]] = [[]]
     placed: list[Placed] = []
-    for p, solid, inlay in items:
+    for p, solid, inlay, panel in items:
         best: tuple[int, float, float, int] | None = None  # plate, y, x, turn
         for plate, taken in enumerate(plates):
             for turn in (0, 90):
@@ -112,8 +114,11 @@ def arrange(pieces: Iterable[Piece]) -> list[Placed]:
         bx0, by0, _, bx1, by1, _ = bbox(turned)
         move = (x - bx0, y - by0, 0.0)
         plates[plate].append((x, y, x + bx1 - bx0, y + by1 - by0))
-        moved_inlay = inlay.rotate((0, 0, turn)).translate(move) if not inlay.is_empty() else inlay
-        placed.append(Placed(p, turned.translate(move), moved_inlay, plate))
+
+        def moved(m: Manifold) -> Manifold:
+            return m.rotate((0, 0, turn)).translate(move) if not m.is_empty() else m  # noqa: B023
+
+        placed.append(Placed(p, turned.translate(move), moved(inlay), plate, moved(panel)))
     return placed
 
 
@@ -166,6 +171,8 @@ def _threemf_plate(
         members = [(p.label, item.solid, p.color, p.tool)]
         if not item.inlay.is_empty():
             members.append((f"{p.label} Einlage", item.inlay, p.inlay_color, p.inlay_tool))
+        if not item.panel.is_empty():
+            members.append((f"{p.label} Felder", item.panel, p.panel_color, p.panel_tool))
         mesh_ids: list[int] = []
         for label, solid, color, _tool in members:
             objects.append(
@@ -304,6 +311,19 @@ def preview(model: CaseModel, *, components: bool = True) -> bytes:
                     p.inlay,
                 )
             )
+        if not p.panel.is_empty():
+            meshes.append(
+                (
+                    {
+                        "key": f"{p.key}_panel",
+                        "label": p.label,
+                        "kind": "inlay",
+                        "color": p.panel_color,
+                        "explode": p.explode,
+                    },
+                    p.panel,
+                )
+            )
     if components:
         for c in model.components:
             meshes.append(
@@ -410,7 +430,8 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
             "  sind gesetzt; Filamente bei Bedarf an die eingelegten anpassen (PETG empfohlen).",
             "  Die 3MF-Dateien ordnen die Teile den Köpfen zu:",
             f"    Kopf 1: {labels['body']}, {labels['base']} – {colour('body')}",
-            f"    Kopf 2: {labels['front']}, {labels['speaker_ring']} – {colour('front')}",
+            f"    Kopf 2: {labels['front']}, {labels['speaker_ring']}, Felder am Korpus – "
+            + colour("front"),
             "    Kopf 3: Einlagen (Name, Symbole, Figurenring) und Figurensockel – "
             + colour("accent"),
             *([f"    Kopf 4: {labels['snout']} – {colour('muzzle')}"] if "snout" in labels else []),
@@ -489,6 +510,8 @@ def bundle_zip(model: CaseModel, url: str | None = None) -> bytes:
         entries.append((f"stl/{stem}-{p.key}.stl", stl(p.printed(p.solid), p.label)))
         if not p.inlay.is_empty():
             entries.append((f"stl/{stem}-{p.key}-einlage.stl", stl(p.printed(p.inlay), p.label)))
+        if not p.panel.is_empty():
+            entries.append((f"stl/{stem}-{p.key}-felder.stl", stl(p.printed(p.panel), p.label)))
     config = {
         "generator": GENERATOR_VERSION,
         "digest": model.config.digest(),

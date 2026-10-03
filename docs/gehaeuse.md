@@ -36,7 +36,9 @@ Alles druckt ohne Stützmaterial. Jedes Teil passt auf 180 × 180 mm, also auch 
 - Sie wird in eine 0,6 mm tiefe Vertiefung der Front geklebt (2K-Kleber oder Sekundenkleber-Gel) und ist so groß, dass sie nicht als Kleinteil gilt (passt nicht in den Kleinteile-Zylinder nach EN 71-1).
 - Augen, Schnurrhaare und Wimpern bleiben als Einlage auf der Front.
 
-Die Oberkante des Korpus ist mit 6 mm gerundet. Weil der Korpus kopfüber gedruckt wird, läuft die Rundung zur Oberseite hin in 45° aus; so hängt am Druckbett nichts über. Das Lautsprechergitter „Punkte“ hat runde Löcher auf Ringen wie ein klassischer Lautsprecher; Ohren und Augen sind auf der Rückseite gerundet.
+**Look:** Der Korpus ist ein Rahmen in der Gehäusefarbe mit stark gerundeten Kanten; oben, links, rechts und hinten sind farbige Felder in der Frontfarbe eingelassen (0,6 mm, Kopf 2), wie Füllungen in einem Holzrahmen. Vorn sitzt ein großes rundes Gitter in der Akzentfarbe: vor dem Lautsprecher gehen die Löcher durch, darüber hinaus setzt sich das Muster als flache Mulden fort (dahinter liegen Sitzring und Schraubdome). In den oberen Ecken der Front stehen Noten, wo sie Gitter und Namen nicht berühren. Oben liegt ein breiter Ring in der Akzentfarbe um den Figurenplatz. Vorgeschlagen für den Würfel: Rahmen Sand, Felder Rot, Akzente Weiß.
+
+Die Oberkante des Korpus ist mit 10 mm gerundet; der Innenraum folgt der Rundung, damit die Wand überall 2,4 mm stark bleibt. Weil der Korpus kopfüber gedruckt wird, läuft die Rundung zur Oberseite hin in 45° aus; so hängt am Druckbett nichts über. Das Lautsprechergitter „Punkte“ hat runde Löcher auf Ringen wie ein klassischer Lautsprecher; Ohren und Augen sind auf der Rückseite gerundet.
 
 ## Drucken
 
