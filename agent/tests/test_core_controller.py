@@ -11,7 +11,7 @@ from typing import Any
 import pytest
 
 from myboxi_agent.core.clock import FakeClock
-from myboxi_agent.core.controller import RESUME_SAVE_EVERY_S, Controller
+from myboxi_agent.core.controller import RESTART_AFTER_MS, RESUME_SAVE_EVERY_S, Controller
 from myboxi_agent.core.model import (
     Action,
     Loading,
@@ -239,6 +239,56 @@ def test_next_wraps_with_repeat_all(box: Box) -> None:
     assert box.player.calls[-1] == "play:0@0"
 
 
+def test_previous_goes_to_the_title_before(box: Box) -> None:
+    """SPEC v0.15 §9.4: ``next`` held."""
+    plan = playable(n=3)
+    box.library.by_uid[UID] = plan
+    box.ctl.token_placed(UID)
+    box.player.index, box.player.position_ms = 2, 1500
+    box.ctl.button(Action.PREVIOUS)
+    assert box.player.calls[-1] == "play:1@0"
+    assert box.resume.points[plan.token_id] == ResumePoint(1, 0)
+
+
+def test_previous_restarts_a_title_that_played_a_little(box: Box) -> None:
+    box.library.by_uid[UID] = playable(n=3)
+    box.ctl.token_placed(UID)
+    box.player.index, box.player.position_ms = 2, RESTART_AFTER_MS
+    box.ctl.button(Action.PREVIOUS)
+    assert box.player.calls[-1] == "play:2@0"
+
+
+def test_previous_on_the_first_title(box: Box) -> None:
+    box.library.by_uid[UID] = playable(n=3)
+    box.ctl.token_placed(UID)
+    box.ctl.button(Action.PREVIOUS)
+    assert box.player.calls[-1] == "play:0@0"  # its start, no wrap without repeat
+    assert box.player.state == "playing"
+
+
+def test_previous_wraps_with_repeat_all(box: Box) -> None:
+    box.library.by_uid[UID] = playable(n=3, repeat="all")
+    box.ctl.token_placed(UID)
+    box.ctl.button(Action.PREVIOUS)
+    assert box.player.calls[-1] == "play:2@0"
+
+
+def test_previous_plays_again_when_paused(box: Box) -> None:
+    box.library.by_uid[UID] = playable(n=2)
+    box.ctl.token_placed(UID)
+    box.ctl.button(Action.PLAY_PAUSE)
+    box.player.index = 1
+    box.ctl.button(Action.PREVIOUS)
+    assert box.player.calls[-1] == "play:0@0"
+    assert box.ctl.status().status == "playing"
+
+
+def test_previous_without_anything_is_audible(box: Box) -> None:
+    box.ctl.button(Action.PREVIOUS)
+    assert box.announcer.said == [(Prompt.TONE_ERROR,)]
+    assert box.player.calls == []
+
+
 def test_setup_and_repair_combinations(box: Box) -> None:
     box.ctl.button(Action.SETUP_MODE)
     box.ctl.button(Action.REPAIR)
@@ -429,6 +479,25 @@ def test_next_skips_within_the_context(box: Box) -> None:
     box.ctl.button(Action.NEXT)
     assert box.player.calls[-1] == "skip"
     assert box.ctl.status().status == "playing"
+
+
+def test_previous_within_the_context(box: Box) -> None:
+    """SPEC v0.15 §8.1: back to the title before, or to the start after three seconds."""
+    box.library.by_uid[UID] = spotify()
+    box.ctl.token_placed(UID)
+    box.player.index, box.player.position_ms = 2, 1000
+    box.ctl.button(Action.PREVIOUS)
+    assert box.player.calls[-1] == "skip_back"
+    box.player.position_ms = 5000
+    box.ctl.button(Action.PREVIOUS)
+    assert box.player.calls[-1] == "restart"
+    assert box.ctl.status().status == "playing"
+
+
+def test_previous_in_a_connect_session_goes_to_spotify(box: Box) -> None:
+    box.ctl.remote_playing(True)
+    box.ctl.button(Action.PREVIOUS)
+    assert box.player.calls == ["skip_back"]
 
 
 def test_end_of_context_resets_the_position(box: Box) -> None:

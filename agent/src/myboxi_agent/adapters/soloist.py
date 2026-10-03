@@ -5,6 +5,7 @@
 plays a figure's context and enforces the box rules on everything Soloist plays:
 
 - resume: muted ``play`` → ``pause`` → N × ``skip_next`` → check the track URI → ``seek``;
+- the track index counts back after ``skip_prev`` (the ``next`` button held);
 - the guard against catalog drift: autoplay titles end the content;
 - explicit titles are skipped unless the box allows them;
 - actions from the Spotify app (play, pause, volume, another context) go to the controller.
@@ -117,6 +118,7 @@ class _Figure:
     index: int = 0
     started: bool = False
     explicit_skips: int = 0
+    back_at: float | None = None  # skip_prev sent: the next track change goes back
     tracks_left: int | None = None  # context titles still queued, from queue_changed
 
 
@@ -216,6 +218,15 @@ class SoloistPlayer:
 
     def skip(self) -> None:
         self.client.send("skip_next")
+
+    def skip_back(self, restart: bool) -> None:
+        if restart:
+            self.client.send("seek", position_ms=0)
+            self._pos_ms, self._pos_at = 0, self.clock.monotonic()
+            return
+        if self.figure is not None:
+            self.figure.back_at = time.monotonic()
+        self.client.send("skip_prev")
 
     def pause(self) -> None:
         self._expect_status("paused")
@@ -417,7 +428,12 @@ class SoloistPlayer:
             return
         f = self.figure
         if f is not None and f.started and uri != previous:
-            f.index = 0 if uri == f.first_track else f.index + 1
+            back = f.back_at is not None and time.monotonic() - f.back_at < EXPECT_S
+            f.back_at = None
+            if uri == f.first_track:
+                f.index = 0
+            else:
+                f.index = max(0, f.index - 1) if back else f.index + 1
         if is_explicit(item) and not self.allow_explicit():
             skips = f.explicit_skips + 1 if f is not None else 0
             if f is not None:

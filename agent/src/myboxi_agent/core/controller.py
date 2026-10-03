@@ -37,6 +37,7 @@ from myboxi_protocol.state import DeviceConfig
 
 RESUME_SAVE_EVERY_S = 10.0  # CLAUDE.md rule 5
 PAIRING_REPEAT_S = 30.0  # SPEC §9.5
+RESTART_AFTER_MS = 3000  # SPEC v0.15 §9.4: back goes to the start of a title played this long
 
 PlaybackStatus = Literal["stopped", "playing", "paused"]
 
@@ -174,6 +175,8 @@ class Controller:
                 self._change_volume(-volume.STEP)
             case Action.NEXT:
                 self._next()
+            case Action.PREVIOUS:
+                self._previous()
             case Action.SETUP_MODE:
                 self.system.request_setup_mode()
             case Action.REPAIR:
@@ -445,6 +448,38 @@ class Controller:
         else:
             self._finish(s)
             return
+        s.playing = True
+        self._save(emit=False)
+
+    def _previous(self) -> None:
+        """SPEC v0.15 §9.4: back to the start of the title once it has played a little,
+        otherwise to the title before; from the first title to the last only with repeat."""
+        s = self.session
+        pos = self.player.position()
+        restart = pos is not None and pos.position_ms >= RESTART_AFTER_MS
+        if self.external_playing and (s is None or s.finished):
+            self.player.skip_back(restart)
+            return
+        if s is None or s.finished:
+            self.announcer.announce(Prompt.TONE_ERROR)
+            return
+        if s.plan.context:
+            self.player.skip_back(restart)
+            s.playing = True
+            return
+        if s.plan.provider == "stream":
+            self.announcer.announce(Prompt.TONE_ERROR)  # SPEC v0.11 §8.3: live, no title before
+            return
+        current = pos.item_index if pos else 0
+        if restart:
+            index = current
+        elif current > 0:
+            index = current - 1
+        elif s.plan.repeat == "all":
+            index = len(s.order) - 1
+        else:
+            index = 0
+        self.player.play(s.items(), index, 0, s.plan.repeat)
         s.playing = True
         self._save(emit=False)
 

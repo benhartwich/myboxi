@@ -1,4 +1,4 @@
-"""Button presses to actions, incl. repeats and 5-second combinations (SPEC §9.4)."""
+"""Button presses to actions: repeats, long presses, 5-second combinations (SPEC §9.4)."""
 
 from __future__ import annotations
 
@@ -11,9 +11,11 @@ ButtonName = str
 REPEAT_DELAY_S = 0.5
 REPEAT_EVERY_S = 0.25
 COMBO_HOLD_S = 5.0
+LONG_PRESS_S = 1.0  # SPEC v0.15 §9.4: ``next`` held this long goes back instead
 
 _VOLUME = {"volume_up": Action.VOLUME_UP, "volume_down": Action.VOLUME_DOWN}
 _ON_RELEASE = {"play_pause": Action.PLAY_PAUSE, "next": Action.NEXT}
+_ON_LONG_RELEASE = {"next": Action.PREVIOUS}
 _COMBOS: dict[frozenset[str], Action] = {
     frozenset({"volume_up", "volume_down"}): Action.SETUP_MODE,
     frozenset({"play_pause", "next"}): Action.REPAIR,
@@ -49,6 +51,8 @@ class ButtonTracker:
         self._fired_combos = {c for c in self._fired_combos if c <= self._held.keys()}
         if held is None or held.in_combo:
             return []
+        if button in _ON_LONG_RELEASE and self.clock.monotonic() - held.since >= LONG_PRESS_S:
+            return [_ON_LONG_RELEASE[button]]
         if button in _ON_RELEASE:
             return [_ON_RELEASE[button]]
         return []

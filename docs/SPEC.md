@@ -1,6 +1,6 @@
-# Myboxi — Spezifikation v0.14: Datenmodell & Geräteprotokoll
+# Myboxi — Spezifikation v0.15: Datenmodell & Geräteprotokoll
 
-Status: Entwurf · Stand: 2026-10-01 · Änderungen: §14
+Status: Entwurf · Stand: 2026-10-03 · Änderungen: §14
 Scope: Der Vertrag zwischen **Box-Agent** (Raspberry Pi) und **Server**.
 Nicht im Scope: Web-UI, Gehäuse, Image-Build, Rechtliches (eigene Dokumente).
 
@@ -555,6 +555,7 @@ resolve(content) -> PlaybackPlan | Unavailable(reason)
 
 **Wiedergabe einer Figur**
 - `play` mit der gebundenen URI. `shuffle` und `repeat` der Zuordnung gehen über `set_shuffle`, `set_repeat_context` und `set_repeat_track`. `next` sendet `skip_next`.
+- `next` gehalten (§9.4, v0.15) sendet `skip_prev`; lief der Titel schon mindestens 3 s, stattdessen `seek` auf 0. Nach `skip_prev` zählt die Titelnummer für das Resume zurück.
 - Resume: `item_index` ist die Titelnummer im Kontext, `item_key` die Titel-URI.
   - Ablauf: stumm `play` → `pause` → `item_index` × `skip_next` (höchstens 50, je Schritt höchstens 3 s) → Titel-URI vergleichen → `seek` → Lautstärke zurück → `play`.
   - Passt die URI nicht oder klappt ein Schritt nicht, beginnt der Kontext von vorn. Mit `shuffle` gibt es kein Resume.
@@ -566,13 +567,14 @@ resolve(content) -> PlaybackPlan | Unavailable(reason)
 
 **Connect-Sitzungen aus der Spotify-App**
 - Startet jemand in der Spotify-App eine Wiedergabe auf der Box, gelten dieselben Regeln wie für Figuren: Lautstärke-Policy (§9.2), Ruhezeiten, Sleep-Timer, Wächter, Explicit-Filter.
+- `next` sendet `skip_next`, gehalten `skip_prev` (v0.15).
 - Die jüngste Aktion gewinnt: Eine Connect-Sitzung pausiert eine laufende Figur (Position gesichert); eine aufgelegte Figur ersetzt die Connect-Sitzung.
 
 **Nicht verfügbar:** Ansage und Fehlerton, `playback_error` mit `disabled`, `not_configured`, `not_running`, `expired` oder `not_logged_in` (§6.5).
 
 ### 8.3 Radio (Streams)
 - Die Box spielt `source.url` direkt ab (`http` oder `https`, auch Senderlisten wie `.m3u` und `.pls`). Kein Cache, nur online.
-- Kein Resume: ein Sender beginnt immer live. `next` hat keinen nächsten Titel und quittiert mit dem Fehlerton.
+- Kein Resume: ein Sender beginnt immer live. `next` hat keinen nächsten Titel und, gehalten, keinen vorherigen (v0.15); beides quittiert die Box mit dem Fehlerton.
 - Ist der Sender nicht erreichbar oder bricht er ab: Ansage und Fehlerton, `playback_error` `stream_error`.
 - `stream` steht standardmäßig in `providers_enabled` (§3.4).
 
@@ -658,8 +660,11 @@ Details:
 | `play_pause` kurz | Pause bzw. weiterspielen; während der Kopplung: Code wiederholen |
 | `volume_up` / `volume_down` kurz | Lautstärke ±5 (über §9.2); gehalten alle 250 ms wiederholt |
 | `next` kurz | Nächster Titel; am Ende gemäß `repeat` (`all`: erster Titel, sonst Stille und Position auf Anfang) |
+| `next` gehalten (ab 1 s, wirkt beim Loslassen; v0.15) | Zurück: Lief der Titel schon mindestens 3 s, an seinen Anfang, sonst zum vorherigen Titel. Am ersten Titel mit `repeat` `all` zum letzten, sonst an den Anfang des ersten. Pausiert spielt die Box danach weiter; ohne Inhalt Fehlerton |
 | `volume_up` + `volume_down` 5 s | Setup-Modus (§9.3) |
 | `play_pause` + `next` 5 s | Box entkoppeln (`/device/unpair`) und neu koppeln (§9.5) |
+
+Gehört eine Taste zu einer gedrückten Kombination, löst sie beim Loslassen nichts aus, auch nicht gehalten.
 
 ### 9.5 Kopplung auf der Box
 - Eine ungekoppelte Box mit Server-URL startet die Kopplung (§7.1) automatisch, sobald sie online ist.
@@ -778,6 +783,7 @@ Der Agent wird in M0 gegen einen **Mock-Server** entwickelt, der die Endpunkte a
 - [x] Lassen sich Autoplay/Smart Shuffle in Soloist abschalten? Nein, weder per CLI noch per WebSocket. Es bleibt der Wächter aus §8.1.
 - [ ] Resume bei Spotify-Inhalten: `play` hat keinen Startpunkt; Verfahren mit `skip_next` und `seek` nach §8.1. Auf echter Hardware noch zu prüfen.
 - [ ] Hörbücher: Soloist dokumentiert keine Hörbuch-URIs.
+- [ ] `skip_prev` bei Spotify (§8.1): Soloist dokumentiert nicht, ob es nach einigen Sekunden selbst an den Titelanfang springt. Auf echter Hardware prüfen; die Box sendet `skip_prev` nur in den ersten 3 s eines Titels.
 - [ ] TTS offline für Ansagen: Piper mit deutscher Stimme, Speicherbedarf auf Zero 2 W prüfen.
 - [x] Tech-Stack festgelegt (siehe `CLAUDE.md`).
 - [x] Lizenz: Server AGPL-3.0-or-later, Agent GPL-3.0-or-later, `packages/protocol` Apache-2.0, Spezifikation und Doku CC BY 4.0 (siehe `REUSE.toml`).
@@ -786,6 +792,12 @@ Der Agent wird in M0 gegen einen **Mock-Server** entwickelt, der die Endpunkte a
 ---
 
 ## 14. Änderungen
+
+**v0.15 (2026-10-03)** — Zurück-Funktion; keine Änderung am Protokoll oder am Datenmodell.
+- §9.4: `next` gehalten geht an den Titelanfang oder zum vorherigen Titel.
+- §8.1: `skip_prev` bzw. `seek` auf 0, die Titelnummer zählt zurück; auch in Connect-Sitzungen.
+- §8.3: Radio quittiert auch das Halten mit dem Fehlerton.
+- §13: Verhalten von `skip_prev` auf echter Hardware prüfen.
 
 **v0.14 (2026-10-01)** — Einrichtungsdatei; Protokollversion bleibt `v1`, alle Änderungen additiv.
 - §4: `claim_token` in `secret`.

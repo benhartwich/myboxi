@@ -86,6 +86,7 @@ class Action(StrEnum):
     VOLUME_UP = "volume_up"
     VOLUME_DOWN = "volume_down"
     NEXT = "next"
+    PREVIOUS = "previous"  # SPEC v0.15: ``next`` held
     SETUP_MODE = "setup_mode"
     REPAIR = "repair"
 

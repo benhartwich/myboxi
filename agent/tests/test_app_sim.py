@@ -110,6 +110,20 @@ async def test_setup_combination(running: App, monkeypatch: pytest.MonkeyPatch) 
     assert system.setup_requested == 1
 
 
+async def test_next_and_held_next(running: App, monkeypatch: pytest.MonkeyPatch) -> None:
+    """SPEC §9.4: ``next`` pressed goes on, held goes back (v0.15)."""
+    monkeypatch.setattr("myboxi_agent.core.buttons.LONG_PRESS_S", 0.3)
+    routing = running.adapters.player
+    assert isinstance(routing, RoutingPlayer)
+    player = routing.local
+    assert isinstance(player, SimPlayer)
+    await ctl(running, cmd="place", uid=UID)
+    await ctl(running, cmd="press", button="next")
+    assert player.index == 1
+    await ctl(running, cmd="hold", buttons=["next"], seconds=0.4)
+    assert player.index == 0
+
+
 async def test_shutdown_saves_position(tmp_path: Path) -> None:
     app = App(make_settings(tmp_path), sim_adapters())
     add_local_library(app, tmp_path)
