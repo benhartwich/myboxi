@@ -1,0 +1,86 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Dependency updates for Myboxi. Every update goes through a PR and CI; nothing merges by itself, because agent dependencies end up in signed box updates.",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigestsToSemver"
+  ],
+  "timezone": "Europe/Vienna",
+  "schedule": ["before 6am on monday"],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 5,
+  "minimumReleaseAge": "3 days",
+  "automerge": false,
+  "osvVulnerabilityAlerts": true,
+  "vulnerabilityAlerts": {
+    "schedule": ["at any time"],
+    "minimumReleaseAge": null
+  },
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": ["before 6am on monday"]
+  },
+  "pyenv": {
+    "enabled": false
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "uv in CI and the Docker image (UV_VERSION)",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/", "/^deploy/docker/Dockerfile$/"],
+      "matchStrings": ["UV_VERSION[:=]\\s*\"?(?<currentValue>\\d+\\.\\d+\\.\\d+)\"?"],
+      "depNameTemplate": "astral-sh/uv",
+      "datasourceTemplate": "github-releases"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Python dependencies: minor and patch updates in one weekly PR",
+      "matchManagers": ["pep621"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchPackageNames": ["*", "!manifold3d", "!procrastinate"],
+      "groupName": "Python dependencies (non-major)"
+    },
+    {
+      "description": "GitHub Actions: minor and patch updates in one PR",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "groupName": "GitHub Actions"
+    },
+    {
+      "description": "uv everywhere at the same version",
+      "matchPackageNames": ["astral-sh/uv", "uv"],
+      "groupName": "uv"
+    },
+    {
+      "description": "manifold3d is pinned on purpose: the case golden digests depend on it (hardware/case)",
+      "matchPackageNames": ["manifold3d"],
+      "dependencyDashboardApproval": true,
+      "prBodyNotes": ["Pinned on purpose: check the case golden digests and `myboxi-case check --all`, bump GENERATOR_VERSION if the geometry changes."]
+    },
+    {
+      "description": "procrastinate: its schema is vendored in server/migrations/sql",
+      "matchPackageNames": ["procrastinate"],
+      "dependencyDashboardApproval": true,
+      "prBodyNotes": ["The schema is vendored in `server/migrations/sql`: an update needs a new schema file and an Alembic migration."]
+    },
+    {
+      "description": "Speech for the box prompts: the Kokoro forks match the Thorsten-Voice model, and an update changes every prompt",
+      "matchFileNames": ["tools/prompts/requirements-tts.txt"],
+      "dependencyDashboardApproval": true,
+      "prBodyNotes": ["Changes the generated box prompts: listen to them before merging (tools/prompts)."]
+    },
+    {
+      "description": "Python comes from Debian (CLAUDE.md): leave requires-python alone",
+      "matchDepTypes": ["requires-python"],
+      "enabled": false
+    },
+    {
+      "description": "Debian release and PostgreSQL major are platform decisions (CLAUDE.md), not updates",
+      "matchDatasources": ["docker"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    }
+  ]
+}
