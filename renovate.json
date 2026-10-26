@@ -39,7 +39,7 @@
       "description": "Python dependencies: minor and patch updates in one weekly PR",
       "matchManagers": ["pep621"],
       "matchUpdateTypes": ["minor", "patch"],
-      "matchPackageNames": ["*", "!manifold3d", "!procrastinate"],
+      "matchPackageNames": ["!manifold3d", "!procrastinate"],
       "groupName": "Python dependencies (non-major)"
     },
     {
