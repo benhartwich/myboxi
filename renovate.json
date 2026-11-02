@@ -49,8 +49,8 @@
       "groupName": "GitHub Actions"
     },
     {
-      "description": "uv everywhere at the same version",
-      "matchPackageNames": ["astral-sh/uv", "uv"],
+      "description": "uv everywhere at the same version, including the uv_build backend",
+      "matchPackageNames": ["astral-sh/uv", "uv", "uv_build"],
       "groupName": "uv"
     },
     {
@@ -74,6 +74,18 @@
     {
       "description": "Python comes from Debian (CLAUDE.md): leave requires-python alone",
       "matchDepTypes": ["requires-python"],
+      "enabled": false
+    },
+    {
+      "description": "CI runs on Python 3.13 like Debian 13 and the box (CLAUDE.md): no python-version updates in workflows",
+      "matchManagers": ["github-actions"],
+      "matchDepNames": ["python"],
+      "enabled": false
+    },
+    {
+      "description": "Runner image majors (Ubuntu LTS) are a platform decision, not an update",
+      "matchDatasources": ["github-runners"],
+      "matchUpdateTypes": ["major"],
       "enabled": false
     },
     {
