@@ -18,7 +18,7 @@ env:
 
 jobs:
   lint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v7.0.0
@@ -34,7 +34,7 @@ jobs:
       - run: uvx --from 'reuse[charset-normalizer]' reuse lint
 
   test:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     services:
       postgres:
         image: postgres:17
@@ -64,7 +64,7 @@ jobs:
   # Self-hosting (docs/selbst-hosten.md): the image builds and the whole Compose stack works
   # with an own CA, MQTT and the device API.
   docker:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
       - run: deploy/docker/smoke-test.sh
