@@ -1,5 +1,5 @@
-"""Data retention (SPEC §3.11, §10): events 30 days; expired auth artefacts; case requests
-(unconfirmed 48 h, otherwise 12 months, docs/gehaeuse.md)."""
+"""Data retention (SPEC §3.11, §10): events 30 days; expired auth artefacts; finished uploads
+30 days; case requests (unconfirmed 48 h, otherwise 12 months, docs/gehaeuse.md)."""
 
 from __future__ import annotations
 
@@ -52,6 +52,11 @@ async def purge_expired(db: AsyncSession, now: dt.datetime | None = None) -> dic
         # SPEC v0.14 §7.1: setup file tokens, 30 days after use or expiry
         "claim_token": delete(ClaimToken).where(
             func.coalesce(ClaimToken.used_at, ClaimToken.expires_at) < now - CLAIM_TOKEN_RETENTION
+        ),
+        # finished uploads (original file names); the audio itself stays as asset
+        "upload": delete(Upload).where(
+            Upload.status.in_([UploadStatus.DONE, UploadStatus.DUPLICATE, UploadStatus.FAILED]),
+            Upload.updated_at < now - UPLOAD_RETENTION,
         ),
         "case_request": delete(CaseRequest).where(
             or_(

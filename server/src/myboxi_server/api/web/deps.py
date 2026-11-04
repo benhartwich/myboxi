@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ipaddress
 import uuid
 from collections.abc import Awaitable, Callable
 from typing import Annotated
@@ -85,11 +86,20 @@ def require(perm: Perm) -> Callable[..., Awaitable[TenantContext]]:
 
 
 def client_ip(request: Request, settings: Settings) -> str:
+    """The client address for rate limits. IPv6 counts per /64: one connection usually
+    owns a whole /64, so per address it could change its key at will."""
+    host = request.client.host if request.client else "unknown"
     if settings.trust_proxy_headers:
-        real = request.headers.get("x-real-ip")
-        if real:
-            return real
-    return request.client.host if request.client else "unknown"
+        host = request.headers.get("x-real-ip") or host
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return host
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.ipv4_mapped is not None:
+            return str(addr.ipv4_mapped)
+        return str(ipaddress.ip_network(f"{addr}/64", strict=False))
+    return str(addr)
 
 
 ReadCtx = Annotated[TenantContext, Depends(require(Perm.READ))]

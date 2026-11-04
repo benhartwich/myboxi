@@ -26,7 +26,10 @@ MAX_MESSAGE = 2000
 MAX_NAME = 100
 COUNTRIES = {"AT": "Österreich", "DE": "Deutschland", "CH": "Schweiz", "LI": "Liechtenstein"}
 
-FORM_LABELS = {"radio": "Radio", "cube": "Würfel", "bear": "Bär"}
+FORM_LABELS = {
+    "radio": "Radio", "cube": "Würfel", "bear": "Bär", "unicorn": "Einhorn",
+    "cat": "Katze", "bunny": "Hase", "frog": "Frosch",
+}  # fmt: skip
 BOARD_LABELS = {"zero2w": "Raspberry Pi Zero 2 W", "pi4": "Raspberry Pi 4"}
 POWER_LABELS = {"usbc": "USB-C-Buchse", "powerbank": "Powerbank im Gehäuse"}
 GRILLE_LABELS = {"dots": "Punkte", "stars": "Sterne", "hearts": "Herzen", "lines": "Streifen"}

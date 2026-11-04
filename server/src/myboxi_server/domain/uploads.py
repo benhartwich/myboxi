@@ -339,16 +339,16 @@ async def set_cover(
     staged: Path,
 ) -> Asset:
     """Replace the content's cover with a 512x512 JPEG (SPEC v0.3 §3.8). The caller commits."""
-    ctx.require(Perm.CONTENT_WRITE)
-    content = await db.scalar(
-        select(Content).where(Content.id == content_id, Content.tenant_id == ctx.tenant_id)
-    )
-    if content is None:
-        raise NotFoundError()
-    if Path(filename).suffix.lower() not in IMAGE_EXTENSIONS:
-        raise InvalidInputError("Erlaubt sind JPEG, PNG und WebP.")
     output = settings.tmp_dir / f"{uuid7()}.jpg"
-    try:
+    try:  # the staged file goes in every case, also when the request is refused
+        ctx.require(Perm.CONTENT_WRITE)
+        content = await db.scalar(
+            select(Content).where(Content.id == content_id, Content.tenant_id == ctx.tenant_id)
+        )
+        if content is None:
+            raise NotFoundError()
+        if Path(filename).suffix.lower() not in IMAGE_EXTENSIONS:
+            raise InvalidInputError("Erlaubt sind JPEG, PNG und WebP.")
         await ffmpeg.make_cover(settings.ffmpeg_path, staged, output)
     except ffmpeg.MediaError as exc:
         raise InvalidInputError(exc.message) from None

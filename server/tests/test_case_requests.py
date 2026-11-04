@@ -4,13 +4,19 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+from typing import get_args
 
 import httpx
 import pytest
 from fastapi import FastAPI
 from sqlalchemy import select, update
 
+from myboxi_case.config import CaseConfig, Form
+from myboxi_server.api.web.routes_case import FORMS
 from myboxi_server.auth import mail as mail_module
+from myboxi_server.domain.case_requests import FORM_LABELS, describe
+from myboxi_server.domain.errors import InvalidInputError
+from myboxi_server.domain.members import normalize_email
 from myboxi_server.domain.retention import purge_expired
 from myboxi_server.jobs import context as job_context
 from myboxi_server.models import CaseRequest
@@ -200,3 +206,21 @@ async def test_retention(
         counts = await purge_expired(db, now + dt.timedelta(days=366))
         await db.commit()
     assert counts["case_request"] == 2  # a year after the last change
+
+
+def test_every_form_has_a_label() -> None:
+    """Requests for every case form can be described (pages, mails, CLI)."""
+    assert {key: label for key, label, _ in FORMS} == FORM_LABELS
+    for form in get_args(Form):
+        assert describe(CaseConfig(form=form))[0] == ("Form", FORM_LABELS[form])
+
+
+@pytest.mark.parametrize(
+    "email",
+    ["a@x.org, b@y.org", "a@x.org;b@y.org", "Name <a@x.org>", "a b@x.org", "a@x", '"a"@x.org'],
+)
+def test_one_address_per_field(email: str) -> None:
+    """One form field never reaches several recipients (the confirmation mail is public)."""
+    with pytest.raises(InvalidInputError):
+        normalize_email(email)
+    assert normalize_email(" Anna.Muster+box@Example.org ") == "anna.muster+box@example.org"

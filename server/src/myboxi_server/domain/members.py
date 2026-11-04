@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 import uuid
 from dataclasses import dataclass
 
@@ -23,9 +24,14 @@ MIN_PASSWORD_LENGTH = 10
 MAX_PASSWORD_LENGTH = 1024
 
 
+# Exactly one plain address: no lists, display names, comments or quoting. Anything else
+# could make one form field send a mail to many recipients.
+_EMAIL = re.compile(r"[^\s@,;:<>()\[\]\\\"]+@[^\s@,;:<>()\[\]\\\"]+\.[^\s@,;:<>()\[\]\\\".]+")
+
+
 def normalize_email(email: str) -> str:
     email = email.strip().lower()
-    if "@" not in email or len(email) > 254 or email.startswith("@") or email.endswith("@"):
+    if len(email) > 254 or not _EMAIL.fullmatch(email):
         raise InvalidInputError("Bitte eine gültige E-Mail-Adresse angeben.")
     return email
 
