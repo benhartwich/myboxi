@@ -48,8 +48,12 @@ class NetworkWatch:
         self._offline_since: float | None = None
         self._was_online = True
         self._last_trigger = -RETRIGGER_AFTER_S * 2
+        self._call: Callable[[Callable[[], None]], object] = lambda callback: callback()
 
     async def run(self) -> None:
+        # ``check`` runs in a thread; the callbacks (e.g. an asyncio.Event) belong to the loop
+        loop = asyncio.get_running_loop()
+        self._call = loop.call_soon_threadsafe
         while True:
             try:
                 await asyncio.to_thread(self.check)
@@ -65,7 +69,7 @@ class NetworkWatch:
         if self.nm.online() or self.nm.ethernet_connected():
             if not self._was_online:
                 log.info("online again")
-                self.on_online()
+                self._call(self.on_online)
             self._was_online, self._offline_since = True, None
             return
         self._was_online = False
@@ -76,4 +80,4 @@ class NetworkWatch:
         if (no_wifi or lost) and now - self._last_trigger >= RETRIGGER_AFTER_S:
             self._last_trigger = now
             log.info("starting setup mode", extra={"no_wifi": no_wifi})
-            self.system.request_setup_mode()
+            self._call(self.system.request_setup_mode)
