@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from myboxi_agent import durable
 from myboxi_agent.adapters.loudness import gain_for
 from myboxi_agent.adapters.outbox import EventOutbox
 from myboxi_agent.core.clock import Clock
@@ -44,6 +45,7 @@ RETRY_S = 15 * 60
 WAKE_S = 15 * 60
 MAX_EPISODE_BYTES = 500 * 1024 * 1024
 DISK_RESERVE = 200 * 1024 * 1024
+SPACE_CHECK_BYTES = 8 * 1024 * 1024
 CHUNK = 256 * 1024
 MB = 1024 * 1024
 
@@ -204,11 +206,14 @@ class PodcastRefresher:
     # --- downloads --------------------------------------------------------------------------
 
     async def _download_pending(self, http: httpx.AsyncClient) -> None:
-        for episode in self.repo.selected():
-            if episode.sha256 is not None and self.assets.has(episode.sha256):
-                continue
-            if episode.failures >= DOWNLOAD_ATTEMPTS:
-                continue
+        pending = [
+            episode
+            for episode in self.repo.selected()
+            if not (episode.sha256 is not None and self.assets.has(episode.sha256))
+            and episode.failures < DOWNLOAD_ATTEMPTS
+        ]
+        await asyncio.to_thread(self._clean_parts, {episode.key for episode in pending})
+        for episode in pending:
             try:
                 await self._download(http, episode)
             except StorageFull:
@@ -219,6 +224,19 @@ class PodcastRefresher:
                     return
                 self.repo.download_failed(episode.content_id, episode.key)
                 log.warning("episode download failed", extra={"error": str(exc)[:200]})
+
+    def _tmp_dir(self) -> Path:
+        return self.assets.db.asset_dir / "tmp"
+
+    def _clean_parts(self, wanted: set[str]) -> None:
+        """Partial downloads of episodes no longer wanted (dropped out of ``keep_latest``,
+        given up) would take space for good."""
+        tmp_dir = self._tmp_dir()
+        if not tmp_dir.is_dir():
+            return
+        for part in tmp_dir.glob("*.part"):
+            if part.stem not in wanted:
+                part.unlink(missing_ok=True)
 
     def _ensure_space(self, episode: EpisodeRef, needed: int) -> None:
         free = self.disk_free() - DISK_RESERVE
@@ -234,7 +252,7 @@ class PodcastRefresher:
             raise StorageFull
 
     async def _download(self, http: httpx.AsyncClient, episode: EpisodeRef) -> None:
-        tmp_dir = self.assets.db.asset_dir / "tmp"
+        tmp_dir = self._tmp_dir()
         tmp_dir.mkdir(parents=True, exist_ok=True)
         part = tmp_dir / f"{episode.key}.part"
         offset = part.stat().st_size if part.exists() else 0
@@ -250,13 +268,16 @@ class PodcastRefresher:
                 raise DownloadFailed("range not satisfiable")
             elif r.status_code != 206:
                 raise DownloadFailed(f"http_{r.status_code}")
+            mime = r.headers.get("content-type", "").split(";")[0].strip().lower()
+            if mime.startswith("text/") or "html" in mime:
+                raise DownloadFailed("not_audio")  # e.g. a login or error page
             length = r.headers.get("content-length")
             total = offset + int(length) if length and length.isdigit() else None
             if total is not None:
                 if total > MAX_EPISODE_BYTES:
                     raise DownloadFailed("episode too large")
                 self._ensure_space(episode, total - offset)
-            size = offset
+            size, unchecked = offset, 0
             with part.open("ab" if offset else "wb") as fh:
                 # As received (no re-chunking), so an interrupted download keeps its bytes.
                 async for chunk in r.aiter_bytes():
@@ -265,6 +286,16 @@ class PodcastRefresher:
                         fh.close()
                         part.unlink(missing_ok=True)
                         raise DownloadFailed("episode too large")
+                    unchecked += len(chunk)
+                    if total is None and unchecked >= SPACE_CHECK_BYTES:
+                        # no length announced: look at the disk while it fills
+                        unchecked = 0
+                        try:
+                            self._ensure_space(episode, SPACE_CHECK_BYTES)
+                        except StorageFull:
+                            fh.close()
+                            part.unlink(missing_ok=True)
+                            raise
                     fh.write(chunk)
         sha = await asyncio.to_thread(_sha256, part)
         if self.assets.has(sha):
@@ -274,7 +305,7 @@ class PodcastRefresher:
                 self.assets.db.asset_dir, sha, episode_suffix(episode.mime, episode.url)
             )
             dest.parent.mkdir(parents=True, exist_ok=True)
-            part.replace(dest)
+            await asyncio.to_thread(durable.replace, part, dest)
             self.assets.register(sha, size, dest)
         self.repo.downloaded(episode.content_id, episode.key, sha)
         log.info("episode downloaded", extra={"bytes": size})

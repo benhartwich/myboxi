@@ -100,6 +100,9 @@ class MqttLink:
             except aiomqtt.MqttError as exc:
                 # e.g. the server creates the account a moment after pairing: try again soon
                 log.info("mqtt not connected", extra={"error": str(exc)[:200]})
+            except Exception:
+                # e.g. a database error while sending events: HTTPS stays the fallback (§7.3)
+                log.exception("mqtt failed")
             finally:
                 self._client = None
             await self._sleep(delay)

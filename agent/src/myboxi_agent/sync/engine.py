@@ -59,7 +59,9 @@ class Api(Protocol):
     async def events(self, token: str, envelopes: list[dict[str, Any]]) -> EventBatchResponse: ...
     async def reported(self, token: str, message: ReportedMessage) -> None: ...
     async def unpair(self, token: str) -> None: ...
-    async def download(self, token: str, sha256: str, dest: Any) -> int: ...
+    async def download(
+        self, token: str, sha256: str, dest: Any, size: int | None = None
+    ) -> int: ...
     async def aclose(self) -> None: ...
 
 
@@ -187,7 +189,13 @@ class SyncEngine:
                 self._failed("server url must use https")
                 await self._wait(3600)
                 continue
-            api = await self._api_for(url)
+            try:
+                api = await self._api_for(url)
+            except Exception:
+                log.exception("no api client")
+                await self._wait(backoff)
+                backoff = min(backoff * 2, BACKOFF_MAX_S)
+                continue
             try:
                 if self._repair:
                     await self._do_repair(api)
@@ -211,6 +219,13 @@ class SyncEngine:
                 backoff = min(backoff * 2, BACKOFF_MAX_S)
             except (ApiError, ChecksumMismatch) as exc:
                 self._failed(str(exc))
+                await self._wait(backoff)
+                backoff = min(backoff * 2, BACKOFF_MAX_S)
+            except Exception as exc:
+                # e.g. a full disk or a database error: retry later, playback goes on
+                # (CLAUDE.md rule 1)
+                log.exception("sync crashed")
+                self._failed(f"internal: {type(exc).__name__}")
                 await self._wait(backoff)
                 backoff = min(backoff * 2, BACKOFF_MAX_S)
 
@@ -370,7 +385,9 @@ class SyncEngine:
             return False
         for sha in missing:
             try:
-                size = await api.download(await self._token(api), sha, self.assets.path(sha))
+                size = await api.download(
+                    await self._token(api), sha, self.assets.path(sha), missing[sha]
+                )
             except ChecksumMismatch:
                 self.outbox.emit(
                     "sync_error", SyncErrorData(stage="asset_download", code="sha_mismatch")
@@ -433,8 +450,12 @@ class SyncEngine:
             url = self.server_url()
             if not url or self.state.get().tenant_id is None:
                 continue
-            api = await self._api_for(url)
-            with contextlib.suppress(Unreachable, ApiError, NeedsPairing):
+            try:
+                api = await self._api_for(url)
                 if self.outbox_repo.count():
                     await self.flush_outbox(api)
                 await self.report(api)
+            except (Unreachable, ApiError, NeedsPairing):
+                pass
+            except Exception:
+                log.exception("report failed")

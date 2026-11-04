@@ -349,7 +349,8 @@ class LibraryRepo:
         )
 
     def _start_point(self, row: sqlite3.Row, plan: Playable) -> Playable:
-        """SPEC v0.11 §3.9: a new start point from the app applies once, at this placement."""
+        """SPEC v0.11 §3.9: a new start point from the app applies once, at the next placement
+        that plays; the controller marks it used (``start_used``)."""
         if not row["start_at"] or plan.provider == "stream":
             return plan
         try:
@@ -361,14 +362,18 @@ class LibraryRepo:
         ).fetchone()
         if applied is not None and applied["start_id"] == str(start.id):
             return plan
+        index = start.item_index if plan.context or start.item_index < len(plan.items) else 0
+        return dataclasses.replace(
+            plan, start=ResumePoint(index, start.position_ms), start_id=str(start.id)
+        )
+
+    def start_used(self, token_id: uuid.UUID, start_id: str) -> None:
         with self.db.tx() as c:
             c.execute(
                 "INSERT INTO start_applied (token_id, start_id) VALUES (?, ?)"
                 " ON CONFLICT (token_id) DO UPDATE SET start_id = excluded.start_id",
-                (row["token_id"], str(start.id)),
+                (str(token_id), start_id),
             )
-        index = start.item_index if plan.context or start.item_index < len(plan.items) else 0
-        return dataclasses.replace(plan, start=ResumePoint(index, start.position_ms))
 
     def _podcast(self, row: sqlite3.Row, token_id: uuid.UUID, content_id: uuid.UUID) -> Resolution:
         """SPEC v0.8 §8.2, table "Figur auflegen"."""

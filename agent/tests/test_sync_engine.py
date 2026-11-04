@@ -123,8 +123,8 @@ class FakeApi:
         del token
         self.unpaired += 1
 
-    async def download(self, token: str, sha256: str, dest: Path) -> int:
-        del token
+    async def download(self, token: str, sha256: str, dest: Path, size: int | None = None) -> int:
+        del token, size
         self.downloads += 1
         if hashlib.sha256(self.payload).hexdigest() != sha256:
             raise ChecksumMismatch(sha256)

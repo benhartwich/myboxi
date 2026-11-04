@@ -9,7 +9,7 @@ import math
 import shutil
 import struct
 import wave
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -136,6 +136,79 @@ async def test_player_applies_loudness_gain_per_file(fake_mpv: FakeMpv) -> None:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+class ScriptedClient:
+    """Records commands; mpv's replies are delivered by the test."""
+
+    def __init__(self, on_event: Callable[[dict[str, Any]], None]) -> None:
+        self.on_event = on_event
+        self.commands: list[Any] = []
+        self.replies: list[Callable[[], None]] = []
+        self.hello: Callable[[], list[list[Any]]] | None = None
+
+    def send(self, *command: Any) -> None:
+        self.commands.append(list(command))
+
+    def send_command(self, command: Any, on_reply: Callable[[], None] | None = None) -> None:
+        self.commands.append(command)
+        if on_reply is not None:
+            self.replies.append(on_reply)
+
+    def answer(self) -> None:
+        while self.replies:
+            self.replies.pop(0)()
+
+
+def scripted_player() -> tuple[MpvPlayer, ScriptedClient]:
+    clients: list[ScriptedClient] = []
+
+    def factory(on_event: Callable[[dict[str, Any]], None]) -> Any:
+        clients.append(ScriptedClient(on_event))
+        return clients[0]
+
+    player = MpvPlayer(factory)
+    return player, clients[0]
+
+
+ITEMS = [PlanItem("/a/0.opus", "A", 0), PlanItem("/a/1.opus", "B", 0)]
+
+
+def test_start_of_one_figure_never_applies_to_the_next() -> None:
+    """SPEC §9.1: a resume position belongs to its figure; the next starts where it should."""
+    player, client = scripted_player()
+    player.play(ITEMS, 0, 1_200_000, "off")
+    client.commands.clear()
+    player.play(ITEMS, 0, 0, "off")  # another figure, before the first one's file loaded
+    assert ["set_property", "start", "none"] in client.commands
+
+
+def test_late_event_of_the_old_playlist_keeps_the_new_start() -> None:
+    player, client = scripted_player()
+    player.play(ITEMS, 0, 60_000, "off")
+    client.answer()
+    player.play(ITEMS, 1, 30_000, "off")  # placed while the first one still loads
+    client.commands.clear()
+    client.on_event({"event": "file-loaded"})  # the first playlist's, mpv not yet at "stop"
+    client.on_event({"event": "idle"})
+    client.on_event({"event": "property-change", "name": "time-pos", "data": 59.0})
+    assert client.commands == []
+    assert player.position() == ResumePoint(1, 30_000)
+    client.answer()  # mpv handled the new "stop": what follows belongs to this playlist
+    client.on_event({"event": "file-loaded"})
+    assert client.commands == [["set_property", "start", "none"]]
+
+
+def test_volume_and_observers_come_back_after_a_restart() -> None:
+    """CLAUDE.md rule 6: a restarted mpv starts muted; the last volume goes again."""
+    player, client = scripted_player()
+    assert client.hello is not None
+    player.set_volume(35)
+    assert client.hello() == [
+        ["observe_property", 1, "playlist-pos"],
+        ["observe_property", 2, "time-pos"],
+        ["set_property", "volume", 35],
+    ]
 
 
 async def test_announcer_prefers_own_recordings_and_never_stays_silent(
@@ -290,8 +363,26 @@ def test_setup_mode_starts_the_setup_service() -> None:
 def test_clock_trust_follows_ntp_and_sticks() -> None:
     answers = ["NTPSynchronized=no\n", "NTPSynchronized=yes\n", "NTPSynchronized=no\n"]
     clock = SystemClock(runner=lambda _cmd: answers.pop(0))
-    assert not clock.time_trusted()
-    clock._checked = -1e9  # pyright: ignore[reportPrivateUsage]
+    assert not clock.check()
+    assert clock.check()
+    assert clock.check()  # stays trusted until reboot (SPEC §5.6)
     assert clock.time_trusted()
-    clock._checked = -1e9  # pyright: ignore[reportPrivateUsage]
-    assert clock.time_trusted()  # stays trusted until reboot (SPEC §5.6)
+    assert answers == ["NTPSynchronized=no\n"]  # not asked again
+
+
+async def test_clock_asks_ntp_in_the_background(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SPEC §5.6: ``time_trusted`` never runs timedatectl itself (the controller's tick)."""
+    monkeypatch.setattr("myboxi_agent.adapters.clock.CHECK_EVERY_S", 0.01)
+    answers = ["NTPSynchronized=no\n", "NTPSynchronized=yes\n"]
+    asked: list[list[str]] = []
+
+    def runner(cmd: list[str]) -> str:
+        asked.append(cmd)
+        return answers.pop(0)
+
+    clock = SystemClock(runner=runner)
+    assert not clock.time_trusted()
+    assert asked == []
+    await asyncio.wait_for(clock.run(), 2)  # ends once trusted
+    assert clock.time_trusted()
+    assert len(asked) == 2

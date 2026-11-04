@@ -285,6 +285,24 @@ async def test_resume_skips_muted_then_seeks(rig: Rig) -> None:
     assert rig.events == []  # nothing looked like an action from the app
 
 
+async def test_no_position_while_resuming(rig: Rig) -> None:
+    """SPEC v0.9 §8.1: while skipping to the saved title, a save (e.g. the figure taken off)
+    must not overwrite the resume point with a title on the way."""
+    rig.player.play_context(ALBUM, ResumePoint(3, 42_000, track(3)["uri"]), False, "off")
+    seen: list[ResumePoint | None] = []
+    for _ in range(40):
+        seen.append(rig.player.position())
+        if rig.player.figure is not None and rig.player.figure.started:
+            break
+        await asyncio.sleep(0.005)
+    assert seen[0] is None
+    assert all(p is None for p in seen[:-1])
+    await settle(40)
+    pos = rig.player.position()
+    assert pos is not None
+    assert pos.item_index == 3
+
+
 async def test_resume_starts_over_when_the_track_moved(rig: Rig) -> None:
     rig.player.play_context(
         ALBUM, ResumePoint(2, 10_000, "spotify:track:somethingelse00000000"), False, "off"

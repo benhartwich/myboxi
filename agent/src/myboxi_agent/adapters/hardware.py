@@ -169,20 +169,46 @@ Runner = Callable[[list[str]], int]
 
 def run_command(cmd: list[str]) -> int:
     # Fixed argument lists only, no shell.
-    return subprocess.run(cmd, check=False, timeout=60).returncode  # noqa: S603
+    try:
+        return subprocess.run(cmd, check=False, timeout=60).returncode  # noqa: S603
+    except (OSError, subprocess.SubprocessError) as exc:  # e.g. systemctl hangs
+        log.warning("command failed", extra={"cmd": cmd[:3], "error": str(exc)[:200]})
+        return -1
 
 
 class SystemdSystem:
-    """``core.ports.System``: setup mode is the root service myboxi-setupd (polkit-allowed)."""
+    """``core.ports.System``: setup mode is the root service myboxi-setupd (polkit-allowed).
+
+    The controller calls from the event loop: ``systemctl`` runs in a thread then, so a slow
+    systemd never stalls playback (CLAUDE.md rule 1)."""
 
     def __init__(self, runner: Runner = run_command) -> None:
         self.runner = runner
         self.on_repair: Callable[[], None] | None = None
+        self._tasks: set[asyncio.Task[None]] = set()
+
+    def _start_unit(self, unit: str, failed: Callable[[int], None]) -> None:
+        cmd = ["systemctl", "start", "--no-block", unit]
+
+        def run() -> None:
+            code = self.runner(cmd)
+            if code != 0:
+                failed(code)
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            run()
+            return
+        task = loop.create_task(asyncio.to_thread(run))
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     def request_setup_mode(self) -> None:
-        code = self.runner(["systemctl", "start", "--no-block", "myboxi-setupd.service"])
-        if code != 0:
-            log.error("could not start setup mode", extra={"code": code})
+        self._start_unit(
+            "myboxi-setupd.service",
+            lambda code: log.error("could not start setup mode", extra={"code": code}),
+        )
 
     def request_repair(self) -> None:
         if self.on_repair is not None:
@@ -190,9 +216,10 @@ class SystemdSystem:
 
     def request_update(self) -> None:
         """SPEC v0.7 §11.1: look for an update now (online again); polkit allows exactly this."""
-        code = self.runner(["systemctl", "start", "--no-block", "myboxi-updater.service"])
-        if code != 0:
-            log.warning("could not start the updater", extra={"code": code})
+        self._start_unit(
+            "myboxi-updater.service",
+            lambda code: log.warning("could not start the updater", extra={"code": code}),
+        )
 
 
 def hardware_adapters(settings: Settings) -> Adapters:  # pragma: no cover - wiring for the Pi
@@ -230,6 +257,7 @@ def hardware_adapters(settings: Settings) -> Adapters:  # pragma: no cover - wir
         allow_explicit=lambda: False,
     )
     background: list[Background] = [
+        clock.run,  # SPEC §5.6: NTP state, off the event loop
         MpvProcess(
             mpv_args(settings.mpv_path, player_ipc, settings.audio_output, "myboxi"),
             player_ipc,

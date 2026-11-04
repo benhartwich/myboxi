@@ -13,7 +13,6 @@ import asyncio
 import contextlib
 import datetime as dt
 import email.utils
-import io
 import json
 import logging
 import platform
@@ -27,6 +26,8 @@ from typing import Any
 
 import httpx
 
+from myboxi_agent import durable
+
 log = logging.getLogger(__name__)
 
 URL = "https://soloist-builds.spotifycdn.com/soloist_release_{arch}.tar.gz"
@@ -34,6 +35,7 @@ LIFETIME = dt.timedelta(days=90)
 RENEW_BEFORE = dt.timedelta(days=30)
 MAX_ARCHIVE = 128 * 1024 * 1024
 MAX_BINARY = 256 * 1024 * 1024
+CHUNK = 256 * 1024
 KEEP_RELEASES = 2
 SMOKE_TIMEOUT_S = 20
 _BUILD = re.compile(r"\bbuild (\d{9,11})\b")  # "soloist 1.3.8.78 build 1790359283 (20260925)"
@@ -165,20 +167,28 @@ def check_elf(data: bytes, elf_class: int, machine: int) -> None:
         raise InstallError("wrong_arch", "ELF for another machine")
 
 
-def extract_binary(archive: bytes) -> bytes:
-    """The ``soloist`` executable from the archive; nothing else is written to disk."""
+def extract_binary(archive: Path, dest: Path) -> None:
+    """The ``soloist`` executable from the archive into ``dest``; nothing else is written to
+    disk. File to file, so neither is held in RAM (512 MB on the reference box)."""
     try:
-        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
+        with tarfile.open(archive, mode="r:gz") as tar:
             for member in tar:
                 if member.isfile() and member.name.rsplit("/", 1)[-1] == "soloist":
                     if member.size > MAX_BINARY:
                         raise InstallError("too_large")
                     fh = tar.extractfile(member)
                     if fh is not None:
-                        return fh.read()
+                        with fh, dest.open("wb") as out:
+                            shutil.copyfileobj(fh, out, CHUNK)
+                        return
     except (tarfile.TarError, OSError, EOFError) as exc:
         raise InstallError("bad_archive", str(exc)) from exc
     raise InstallError("bad_archive", "no soloist executable in the archive")
+
+
+def elf_header(path: Path) -> bytes:
+    with path.open("rb") as fh:
+        return fh.read(20)
 
 
 Runner = Callable[[list[str]], Awaitable[tuple[int, str]]]
@@ -264,26 +274,36 @@ class Installer:
         )
         if not due:
             return Outcome("later", state.release)
-        archive = await self._download(url)
-        binary = extract_binary(archive)
-        check_elf(binary, elf_class, machine)
         stamp = (modified or self.now()).astimezone(dt.UTC).strftime("%Y%m%d%H%M%S")
         release = self.paths.releases / stamp
         staging = self.paths.releases / f".{stamp}.tmp"
         shutil.rmtree(staging, ignore_errors=True)
         staging.mkdir(parents=True)
-        (staging / "soloist").write_bytes(binary)
+        archive = self.paths.base / ".download.tmp"
+        try:
+            await self._download(url, archive)
+            await asyncio.to_thread(extract_binary, archive, staging / "soloist")
+            check_elf(elf_header(staging / "soloist"), elf_class, machine)
+        except BaseException:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+        finally:
+            archive.unlink(missing_ok=True)
         (staging / "soloist").chmod(0o755)
+        durable.fsync_file(staging / "soloist")
+        durable.fsync_dir(staging)
         code, out = await self.run([str(staging / "soloist"), "--version"])
         if code != 0:
             shutil.rmtree(staging, ignore_errors=True)
             raise InstallError("smoke_test", out[-200:])
         shutil.rmtree(release, ignore_errors=True)
         staging.rename(release)
+        durable.fsync_dir(self.paths.releases)
         link = self.paths.base / ".current.tmp"
         link.unlink(missing_ok=True)
         link.symlink_to(Path("releases") / stamp)
         link.replace(self.paths.current)  # atomic switch
+        durable.fsync_dir(self.paths.base)
         self._prune(stamp)
         state.release = stamp
         state.last_modified = head.headers.get("last-modified")
@@ -297,18 +317,17 @@ class Installer:
         )
         return Outcome("installed", stamp)
 
-    async def _download(self, url: str) -> bytes:
-        chunks: list[bytes] = []
+    async def _download(self, url: str, dest: Path) -> None:
         size = 0
         async with self.http.stream("GET", url) as r:
             if r.status_code != 200:
                 raise InstallError("download", f"HTTP {r.status_code}")
-            async for chunk in r.aiter_bytes():
-                size += len(chunk)
-                if size > MAX_ARCHIVE:
-                    raise InstallError("too_large")
-                chunks.append(chunk)
-        return b"".join(chunks)
+            with dest.open("wb") as fh:
+                async for chunk in r.aiter_bytes(CHUNK):
+                    size += len(chunk)
+                    if size > MAX_ARCHIVE:
+                        raise InstallError("too_large")
+                    fh.write(chunk)
 
     def _prune(self, keep: str) -> None:
         releases = sorted(

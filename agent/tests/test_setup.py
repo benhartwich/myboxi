@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -409,6 +410,28 @@ def _watch(
     nm: StateNM, clock: FakeClock, system: CountingSystem, online: list[int]
 ) -> NetworkWatch:
     return NetworkWatch(nm, system, clock, lambda: online.append(1), is_setup_active=lambda: False)
+
+
+async def test_watch_callbacks_run_on_the_event_loop() -> None:
+    """``check`` runs in a thread; the sync trigger (an asyncio.Event) must be set on the
+    loop (SPEC §5.2)."""
+    nm, clock, system = StateNM(), FakeClock(), CountingSystem()
+    threads: list[int] = []
+    online = asyncio.Event()
+
+    def on_online() -> None:
+        threads.append(threading.get_ident())
+        online.set()
+
+    w = NetworkWatch(nm, system, clock, on_online, is_setup_active=lambda: False)
+    w._was_online = False  # pyright: ignore[reportPrivateUsage]
+    nm.online_ = True
+    task = asyncio.create_task(w.run())
+    try:
+        await asyncio.wait_for(online.wait(), 2)
+    finally:
+        task.cancel()
+    assert threads == [threading.get_ident()]
 
 
 def test_no_wifi_starts_setup_at_once_and_not_too_often() -> None:

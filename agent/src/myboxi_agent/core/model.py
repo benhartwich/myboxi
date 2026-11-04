@@ -39,6 +39,7 @@ class Playable:
     provider: ProviderName = "local"
     # SPEC v0.11 §3.9: a start point from the app, used once instead of the resume position.
     start: ResumePoint | None = None
+    start_id: str | None = None  # marked as used once playback started (``Library.start_used``)
     # SPEC v0.9 §8.1: the provider walks the tracks itself (a Spotify context); ``items`` holds
     # the context URI only and resume points carry the track index and URI.
     context: bool = False

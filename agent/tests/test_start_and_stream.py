@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import random
 import uuid
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
 
@@ -89,6 +90,9 @@ def test_start_point_applies_once(db: Database) -> None:
     first = lib.resolve(UID)
     assert isinstance(first, Playable)
     assert first.start == ResumePoint(2, 0)
+    assert lib.resolve(UID) == first  # looking it up does not use it
+    assert first.start_id is not None
+    lib.start_used(first.token_id, first.start_id)
     second = lib.resolve(UID)
     assert isinstance(second, Playable)
     assert second.start is None
@@ -104,6 +108,36 @@ def test_start_point_applies_once(db: Database) -> None:
     fourth = lib.resolve(UID)
     assert isinstance(fourth, Playable)
     assert fourth.start == ResumePoint(0, 0)
+
+
+async def test_start_point_applies_when_the_figure_is_placed(tmp_path: Path) -> None:
+    """SPEC v0.11 §3.9 on the box: the reader loop looks the figure up first (unknown or
+    loading?); that must not use up the start point before the controller plays it."""
+    from myboxi_agent.adapters.base import Placed, ReaderEvent
+    from myboxi_agent.adapters.bundle import sim_adapters
+    from myboxi_agent.adapters.routing import RoutingPlayer
+    from myboxi_agent.adapters.sim import SimPlayer
+    from myboxi_agent.app import App
+    from myboxi_agent.config import Settings
+
+    app = App(Settings(data_dir=tmp_path / "data", sim=True), sim_adapters())
+    put_assets(app.db)
+    app.library.activate(snapshot(start_at={"id": str(uuid.uuid4()), "item_index": 2}))
+
+    class Reader:
+        async def events(self) -> AsyncIterator[ReaderEvent]:
+            yield Placed(UID)
+
+    app.adapters.reader = Reader()  # pyright: ignore[reportAttributeAccessIssue]
+    await app._reader_loop()  # pyright: ignore[reportPrivateUsage]
+    router = app.adapters.player
+    assert isinstance(router, RoutingPlayer)
+    local = router.local
+    assert isinstance(local, SimPlayer)
+    assert local.index == 2
+    plan = app.library.resolve(UID)
+    assert isinstance(plan, Playable)
+    assert plan.start is None  # used once
 
 
 def test_start_point_behind_the_last_title_starts_at_the_first(db: Database) -> None:
@@ -161,6 +195,27 @@ def test_start_point_wins_over_the_resume_position() -> None:
     assert player.calls == ["play:2@0"]
 
 
+def test_start_point_is_kept_while_a_quiet_hour_lock_refuses_to_play() -> None:
+    """SPEC v0.11 §3.9: it applies at the next placement that actually plays."""
+    plan = chapters(start=ResumePoint(2, 0), start_id="s1")
+    player, announcer = FakePlayer(), FakeAnnouncer()
+    library = FakeLibrary({UID: plan})
+    clock = FakeClock(dt.datetime(2026, 9, 24, 20, 0, tzinfo=dt.UTC))  # 22:00 Vienna
+    cfg = {"quiet_hours": {"start": "19:00", "end": "07:00", "lock": True}}
+    ctl = Controller(
+        clock=clock, player=player, announcer=announcer, outbox=FakeOutbox(),
+        resume_store=FakeResumeStore(), library=library, system=FakeSystem(),
+        config=lambda: DeviceConfig.model_validate(cfg), rng=random.Random(1),
+    )  # fmt: skip
+    ctl.token_placed(UID)
+    assert announcer.said[-1] == (Prompt.QUIET_TIME,)
+    assert library.used == []
+    clock.set_wall(dt.datetime(2026, 9, 25, 8, 0, tzinfo=dt.UTC))
+    ctl.token_placed(UID)
+    assert player.calls == ["play:2@0"]
+    assert library.used == [(plan.token_id, "s1")]
+
+
 def test_start_point_with_shuffle_starts_at_the_chosen_title() -> None:
     plan = chapters(start=ResumePoint(3, 0))
     plan = Playable(plan.token_id, plan.content_id, plan.items, True, True, "off",
@@ -203,3 +258,25 @@ def test_radio_offline_says_so() -> None:
     assert outbox.of("playback_error") == [
         PlaybackErrorData(token_id=plan.token_id, provider="stream", code="stream_error")
     ]
+
+
+def test_radio_that_breaks_off_says_so() -> None:
+    """SPEC v0.11 §8.3: a stream that ends broke off: announcement, error tone, event."""
+    plan = radio()
+    ctl, (player, announcer, outbox) = controller(plan)
+    ctl.token_placed(UID)
+    ctl.playlist_finished()
+    assert announcer.said[-1] == (Prompt.UNAVAILABLE, Prompt.TONE_ERROR)
+    assert outbox.of("playback_error") == [
+        PlaybackErrorData(token_id=plan.token_id, provider="stream", code="stream_error")
+    ]
+    assert player.state == "stopped"
+
+
+def test_radio_error_and_end_report_once() -> None:
+    plan = radio()
+    ctl, (_, _, outbox) = controller(plan)
+    ctl.token_placed(UID)
+    ctl.player_error("decode_error")
+    ctl.playlist_finished()
+    assert len(outbox.of("playback_error")) == 1

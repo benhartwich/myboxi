@@ -51,6 +51,8 @@ class Session:
     play_started: float = 0.0
     last_saved: float = 0.0
     finished: bool = False
+    # The player lost the playlist (mpv restarted): play from here instead of resuming.
+    reload: ResumePoint | None = None
 
     def items(self) -> list[PlanItem]:
         return [self.plan.items[i] for i in self.order]
@@ -184,10 +186,13 @@ class Controller:
                 self.system.request_repair()
 
     def playlist_finished(self) -> None:
-        """End of content without repeat: silence, position back to the start (SPEC §9.1)."""
+        """End of content without repeat: silence, position back to the start (SPEC §9.1).
+        A radio stream has no end: when it stops, it broke off (SPEC v0.11 §8.3)."""
         s = self.session
         if s is None:
             return
+        if s.plan.provider == "stream" and s.playing and not s.finished:
+            self.player_error("stream_error")
         self._finish(s)
 
     def player_error(self, code: str = "player_error") -> None:
@@ -199,12 +204,23 @@ class Controller:
                 code = "stream_error"  # SPEC v0.11 §8.3
         else:
             self.announcer.announce(Prompt.TONE_ERROR)
-        if s is not None:
-            self.outbox.emit(
-                "playback_error",
-                PlaybackErrorData(token_id=s.plan.token_id, provider=s.plan.provider, code=code),
-            )
-            s.playing = False
+        if s is None:
+            return
+        self.outbox.emit(
+            "playback_error",
+            PlaybackErrorData(token_id=s.plan.token_id, provider=s.plan.provider, code=code),
+        )
+        if code == "decode_error" and not s.plan.context and s.plan.provider != "stream":
+            # One broken file: the player goes on with the next one or ends the playlist
+            # (``playlist_finished``), so the session keeps playing (sleep timer, saves).
+            return
+        if not s.finished and not s.plan.context:
+            # e.g. mpv restarted, also while paused: the playlist is gone, so play_pause loads
+            # it again instead of resuming an empty player (SPEC §1.7). A stream starts live.
+            live = s.plan.provider == "stream"
+            s.reload = ResumePoint(0, 0) if live else self.player.position() or ResumePoint(0, 0)
+            self._save(emit=False)  # CLAUDE.md rule 5
+        s.playing = False
 
     # --- Spotify Connect (SPEC v0.9 §8.1) ---------------------------------------------------
 
@@ -248,7 +264,8 @@ class Controller:
         """The volume was changed outside the box (Spotify app): it goes through the one
         volume policy (SPEC §9.2, CLAUDE.md rule 4) and is set back if above the limit."""
         lim = volume.limits(self.config(), self.clock.now(), self.clock.time_trusted())
-        self.requested_volume = max(0, min(value, lim.ceiling, 100))
+        if not lim.locked:  # the lock's ceiling 0 is no wish for the morning
+            self.requested_volume = max(0, min(value, lim.ceiling, 100))
         self._apply_volume(force=True)
 
     def _stop_external(self) -> None:
@@ -333,6 +350,9 @@ class Controller:
 
     def _change_volume(self, delta: int) -> None:
         lim = volume.limits(self.config(), self.clock.now(), self.clock.time_trusted())
+        if lim.locked:
+            # SPEC §3.4: no playback at all; the wish stays for the next morning.
+            return
         # Never build up hidden headroom above the current ceiling.
         self.requested_volume = max(0, min(self.requested_volume + delta, lim.ceiling, 100))
         self._apply_volume()
@@ -367,9 +387,10 @@ class Controller:
         s = Session(plan=plan, order=order, play_started=now, last_saved=now)
         self.session = s
         self.requested_volume = cfg.start_volume
-        self._apply_volume()
+        self._apply_volume(force=True)  # the player may have restarted at another volume
         self.announcer.announce(Prompt.TONE_START)
         self.player.play(s.items(), order.index(start.item_index), start.position_ms, plan.repeat)
+        self._start_used(plan)
         self.outbox.emit(
             "token_played", TokenPlayedData(token_id=plan.token_id, content_id=plan.content_id)
         )
@@ -391,9 +412,16 @@ class Controller:
         self._apply_volume(force=True)
         self.announcer.announce(Prompt.TONE_START)
         self.player.play_context(plan.items[0].source, start, plan.shuffle, plan.repeat)
+        self._start_used(plan)
         self.outbox.emit(
             "token_played", TokenPlayedData(token_id=plan.token_id, content_id=plan.content_id)
         )
+
+    def _start_used(self, plan: Playable) -> None:
+        """SPEC v0.11 §3.9: used once it played, not when only looked up or refused (e.g. in
+        a quiet-hour lock)."""
+        if plan.start is not None and plan.start_id is not None:
+            self.library.start_used(plan.token_id, plan.start_id)
 
     def _play_pause(self) -> None:
         if self.pairing_code:
@@ -410,7 +438,14 @@ class Controller:
             if volume.limits(self.config(), self.clock.now(), self.clock.time_trusted()).locked:
                 self.announcer.announce(Prompt.QUIET_TIME)
                 return
-            self.player.resume()
+            if s.reload is not None:
+                self._apply_volume(force=True)
+                self.player.play(
+                    s.items(), s.reload.item_index, s.reload.position_ms, s.plan.repeat
+                )
+                s.reload = None
+            else:
+                self.player.resume()
             s.playing = True
             s.play_started = self.clock.monotonic()
             return
@@ -449,6 +484,7 @@ class Controller:
             self._finish(s)
             return
         s.playing = True
+        s.reload = None
         self._save(emit=False)
 
     def _previous(self) -> None:
@@ -481,6 +517,7 @@ class Controller:
             index = 0
         self.player.play(s.items(), index, 0, s.plan.repeat)
         s.playing = True
+        s.reload = None
         self._save(emit=False)
 
     def _finish(self, s: Session) -> None:

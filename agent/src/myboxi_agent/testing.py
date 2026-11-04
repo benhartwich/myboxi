@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -126,9 +127,16 @@ class FakeResumeStore:
 @dataclass
 class FakeLibrary:
     by_uid: dict[str, Resolution] = field(default_factory=dict[str, Resolution])
+    used: list[tuple[uuid.UUID, str]] = field(default_factory=list[tuple[uuid.UUID, str]])
 
     def resolve(self, uid: str) -> Resolution:
-        return self.by_uid.get(uid, Unknown(uid))
+        found = self.by_uid.get(uid, Unknown(uid))
+        if isinstance(found, Playable) and (found.token_id, found.start_id) in self.used:
+            return dataclasses.replace(found, start=None, start_id=None)
+        return found
+
+    def start_used(self, token_id: uuid.UUID, start_id: str) -> None:
+        self.used.append((token_id, start_id))
 
 
 @dataclass

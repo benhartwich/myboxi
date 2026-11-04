@@ -204,6 +204,73 @@ def test_player_error_is_audible_and_reported(box: Box) -> None:
     assert len(box.outbox.of("playback_error")) == 1
 
 
+def test_broken_file_in_a_playlist_keeps_the_session_playing(box: Box) -> None:
+    """mpv goes on with the next file: sleep timer and resume saves keep running."""
+    box.set_config(sleep_timer_min=1)
+    box.library.by_uid[UID] = playable(3)
+    box.ctl.token_placed(UID)
+    box.ctl.player_error("decode_error")
+    assert box.announcer.said[-1] == (Prompt.TONE_ERROR,)
+    assert box.ctl.status().status == "playing"
+    box.clock.advance(60)
+    box.ctl.tick()
+    assert box.player.state == "paused"
+
+
+def test_player_restart_plays_again_from_the_position(box: Box) -> None:
+    """SPEC §1.7: the playlist is gone after an mpv crash; play_pause loads it again."""
+    plan = playable(3)
+    box.library.by_uid[UID] = plan
+    box.ctl.token_placed(UID)
+    box.player.index, box.player.position_ms = 1, 42_000
+    box.ctl.player_error("player_restart")
+    assert box.announcer.said[-1] == (Prompt.TONE_ERROR,)
+    assert box.ctl.status().status == "paused"
+    assert box.resume.points[plan.token_id] == ResumePoint(1, 42_000)
+    box.player.volumes.clear()
+    box.ctl.button(Action.PLAY_PAUSE)
+    assert box.player.calls[-1] == "play:1@42000"
+    assert box.player.volumes == [35]  # the restarted player starts muted
+    box.ctl.button(Action.PLAY_PAUSE)
+    box.ctl.button(Action.PLAY_PAUSE)
+    assert box.player.calls[-1] == "resume"
+
+
+def test_player_restart_while_paused_plays_again_from_the_position(box: Box) -> None:
+    """SPEC §1.7: paused when mpv restarted; play_pause must not resume an empty player."""
+    plan = playable(3)
+    box.library.by_uid[UID] = plan
+    box.ctl.token_placed(UID)
+    box.player.index, box.player.position_ms = 2, 7_000
+    box.ctl.button(Action.PLAY_PAUSE)
+    box.ctl.player_error("player_restart")
+    box.ctl.button(Action.PLAY_PAUSE)
+    assert box.player.calls[-1] == "play:2@7000"
+    assert box.ctl.status().status == "playing"
+
+
+def test_player_restart_with_radio_starts_the_stream_again(box: Box) -> None:
+    """SPEC v0.11 §8.3: live, so from the start; never an empty player."""
+    radio = Playable(uuid.uuid4(), uuid.uuid4(), (PlanItem("https://r.example/live", "R", 0),),
+                     False, False, "off", "stream")  # fmt: skip
+    box.library.by_uid[UID] = radio
+    box.ctl.token_placed(UID)
+    box.player.position_ms = 90_000
+    box.ctl.player_error("player_restart")
+    assert box.announcer.said[-1] == (Prompt.UNAVAILABLE, Prompt.TONE_ERROR)
+    box.ctl.button(Action.PLAY_PAUSE)
+    assert box.player.calls[-1] == "play:0@0"
+
+
+def test_placing_a_figure_always_sets_the_volume(box: Box) -> None:
+    """SPEC §9.1: start_volume, even if the player lost it in between."""
+    box.library.by_uid[UID] = playable()
+    box.ctl.token_placed(UID)
+    box.player.volumes.clear()
+    box.ctl.token_placed(UID)
+    assert box.player.volumes == [35]
+
+
 # --- buttons (§9.4) -----------------------------------------------------------------------
 
 
@@ -332,6 +399,25 @@ def test_quiet_lock_prevents_and_stops_playback(box: Box) -> None:
     box.ctl.token_placed(UID)
     assert box.player.state == "paused"
     assert box.announcer.said[-1] == (Prompt.QUIET_TIME,)
+
+
+def test_volume_buttons_in_a_quiet_hour_lock_keep_the_wish(box: Box) -> None:
+    """SPEC §9.2: the lock's limit 0 never becomes the wanted volume for the morning."""
+    box.set_config(quiet_hours={"start": "19:00", "end": "07:00", "lock": True})
+    box.library.by_uid[UID] = playable()
+    box.ctl.token_placed(UID)
+    box.ctl.button(Action.VOLUME_UP)
+    box.ctl.button(Action.PLAY_PAUSE)  # paused in the evening
+    box.clock.set_wall(dt.datetime(2026, 9, 24, 21, 0, tzinfo=dt.UTC))  # 23:00 Vienna
+    box.ctl.button(Action.VOLUME_DOWN)
+    box.ctl.button(Action.VOLUME_UP)
+    box.ctl.external_volume(80)
+    assert box.ctl.requested_volume == 40
+    box.clock.set_wall(dt.datetime(2026, 9, 25, 6, 0, tzinfo=dt.UTC))  # 08:00 Vienna
+    box.ctl.button(Action.PLAY_PAUSE)
+    box.ctl.tick()
+    assert box.player.state == "playing"
+    assert box.player.volume == 40
 
 
 def test_untrusted_time_caps_volume_all_day(box: Box) -> None:

@@ -248,8 +248,10 @@ class SoloistPlayer:
             self._send_volume(self._volume)
 
     def position(self) -> ResumePoint | None:
+        """None until the figure plays where it should: while the resume skips through the
+        context, track and time are not the figure's, and saving them would lose its place."""
         f = self.figure
-        if f is None:
+        if f is None or not f.started:
             return None
         return ResumePoint(f.index, self.position_ms(), _uri(self.item))
 
