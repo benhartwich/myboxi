@@ -257,3 +257,40 @@ async def test_downloaded_asset_is_on_disk_before_it_counts(
     dest = tmp_path / "a.opus"
     await asset_server([]).download("jwt", ASSET_SHA, dest, len(ASSET))
     assert synced == ["a.opus.part", tmp_path.name]
+
+
+async def test_mqtt_link_survives_an_unexpected_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SPEC §6: the broker is optional; a database error there never ends the agent."""
+    from myboxi_agent.core.clock import FakeClock
+    from myboxi_agent.sync import mqtt
+
+    monkeypatch.setattr(mqtt, "RETRY_S", 0.01)
+    sessions: list[int] = []
+
+    class State:
+        def mqtt(self) -> object:
+            return object()
+
+    async def session(_creds: object) -> None:
+        sessions.append(1)
+        raise RuntimeError("database is locked")
+
+    async def handler(_cmd: Any) -> tuple[str, str | None]:
+        return "ok", None
+
+    link = mqtt.MqttLink(
+        state=State(),  # pyright: ignore[reportArgumentType]
+        outbox=None,  # pyright: ignore[reportArgumentType]
+        clock=FakeClock(),
+        on_notify=lambda: None,
+        on_command=handler,
+    )
+    monkeypatch.setattr(link, "_session", session)
+    task = asyncio.create_task(link.run())
+    try:
+        async with asyncio.timeout(2):
+            while len(sessions) < 2:
+                await asyncio.sleep(0.01)
+    finally:
+        task.cancel()
+    assert not link.connected()
