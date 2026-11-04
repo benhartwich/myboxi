@@ -173,10 +173,14 @@ class MpvProcess:
             proc = await asyncio.create_subprocess_exec(
                 *self.args, stdin=asyncio.subprocess.DEVNULL
             )
-            if not first:
-                self.on_restart()
-            first = False
             try:
+                if not first:
+                    try:
+                        self.on_restart()
+                    except Exception:
+                        # never start over (a second mpv) because the callback failed
+                        log.exception("mpv restart handling failed")
+                first = False
                 code = await proc.wait()
             except asyncio.CancelledError:
                 proc.terminate()
