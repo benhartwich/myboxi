@@ -12,7 +12,7 @@ SPDX-License-Identifier = "AGPL-3.0-or-later"
 
 # Documentation and specification.
 [[annotations]]
-path = ["docs/**", "README.md", "CLAUDE.md"]
+path = ["docs/**", "README.md", "CLAUDE.md", "SECURITY.md"]
 SPDX-FileCopyrightText = "2026 Benjamin Hartwich"
 SPDX-License-Identifier = "CC-BY-4.0"
 
