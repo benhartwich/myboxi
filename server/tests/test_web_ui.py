@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -25,6 +27,7 @@ from .helpers import (
     add_member,
     login,
     make_tenant,
+    new_client,
     pair_device,
     seed_library,
     sessionmaker_of,
@@ -91,6 +94,21 @@ async def test_destructive_forms_ask_first(ui: Ui) -> None:
     assert "data-upload" in content.text
     members = await ui.client.get(ui.url("/members"))
     assert "aus dem Haushalt entfernen?" in members.text or "/remove" not in members.text
+
+
+async def test_tracks_can_be_heard_in_the_app(app: FastAPI, ui: Ui) -> None:
+    """Each track has a player; the audio is only served to the household's members."""
+    page = await ui.client.get(ui.url(f"/contents/{ui.lib.content_id}"))
+    urls = re.findall(r'<audio controls preload="none" src="([^"]+)"', page.text)
+    assert len(urls) == 2
+    r = await ui.client.get(urls[0])
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("audio/ogg")
+    assert hashlib.sha256(r.content).hexdigest() == ui.lib.shas[0]
+    other = await make_tenant(app, "Fremd")
+    async with new_client(app) as stranger:
+        await login(stranger, other.owner_email)
+        assert (await stranger.get(urls[0])).status_code == 404
 
 
 # --- exactly one revision per write (acceptance criterion) -------------------------------

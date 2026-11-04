@@ -27,6 +27,7 @@
       <div class="title">
         <strong>{{ item.title }}</strong>
         <span class="muted">{{ item.duration_ms | duration }} · {{ asset.bytes | filesize }}</span>
+        <audio controls preload="none" src="/t/{{ tid }}/contents/{{ content.id }}/items/{{ item.id }}/audio" aria-label="{{ item.title }} anhören"></audio>
       </div>
       {% if ctx.can(Perm.CONTENT_WRITE) %}
       <div class="row nowrap">

@@ -30,7 +30,7 @@ from myboxi_server.domain.authz import TenantContext
 from myboxi_server.domain.errors import DomainError, InvalidInputError, NotFoundError
 from myboxi_server.ids import uuid7
 from myboxi_server.jobs.transcode import queueing_lock
-from myboxi_server.models import Asset
+from myboxi_server.models import Asset, ContentItem
 from myboxi_server.models.enums import ContentKind, UploadProfile, UploadStatus
 from myboxi_server.settings import Settings
 from myboxi_server.storage.filesystem import FilesystemAssetStore
@@ -517,6 +517,28 @@ async def upload_cover(
         )
     await db.commit()
     return RedirectResponse(f"/t/{ctx.tenant_id}/contents/{content_id}", status_code=303)
+
+
+@router.get("/contents/{content_id}/items/{item_id}/audio")
+async def track_audio(
+    request: Request, db: DbSession, ctx: ReadCtx, content_id: uuid.UUID, item_id: uuid.UUID
+) -> Response:
+    """Listen to a track in the app, as the box will play it (transcoded Opus)."""
+    asset = await db.scalar(
+        select(Asset)
+        .join(ContentItem, ContentItem.asset_id == Asset.id)
+        .where(
+            ContentItem.id == item_id,
+            ContentItem.content_id == content_id,
+            ContentItem.tenant_id == ctx.tenant_id,
+            Asset.tenant_id == ctx.tenant_id,
+            Asset.mime == uploads.OPUS_MIME,
+        )
+    )
+    if asset is None:
+        raise NotFoundError()
+    store: FilesystemAssetStore = request.app.state.asset_store
+    return store.response(request, asset.storage_path, etag=asset.sha256, media_type=asset.mime)
 
 
 @router.get("/covers/{asset_id}")
