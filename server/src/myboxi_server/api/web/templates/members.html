@@ -24,7 +24,7 @@
         </select>
         <button class="small secondary">Ändern</button>
       </form>
-      <form method="post" action="/t/{{ tid }}/members/{{ m.user.id }}/remove" class="inline">
+      <form method="post" action="/t/{{ tid }}/members/{{ m.user.id }}/remove" class="inline" data-confirm="{{ m.user.display_name }} aus dem Haushalt entfernen?">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="danger">Entfernen</button>
       </form>

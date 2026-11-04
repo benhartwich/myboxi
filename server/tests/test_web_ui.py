@@ -80,6 +80,19 @@ async def test_pages_render(ui: Ui) -> None:
     assert 'id="tracks"' in r.text
 
 
+async def test_destructive_forms_ask_first(ui: Ui) -> None:
+    """Deleting asks for confirmation (static/app.js); uploads show their progress."""
+    figure = await ui.client.get(ui.url(f"/figures/{ui.lib.token_id}"))
+    assert "/static/app.js?v=" in figure.text
+    assert figure.text.count("data-confirm=") >= 2  # delete figure, release binding
+    content = await ui.client.get(ui.url(f"/contents/{ui.lib.content_id}"))
+    assert "wirklich löschen?" in content.text
+    assert "„Teil 1“ entfernen?" in content.text
+    assert "data-upload" in content.text
+    members = await ui.client.get(ui.url("/members"))
+    assert "aus dem Haushalt entfernen?" in members.text or "/remove" not in members.text
+
+
 # --- exactly one revision per write (acceptance criterion) -------------------------------
 
 Op = Callable[[Ui], Awaitable[httpx.Response]]
