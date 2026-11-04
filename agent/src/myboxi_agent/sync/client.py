@@ -45,6 +45,15 @@ class ChecksumMismatch(Exception):
     pass
 
 
+def _parse[M: BaseModel](model: type[M], response: httpx.Response) -> M:
+    """A body that is not the protocol model (e.g. an HTML page from a proxy) is an API
+    error the sync retries with backoff, never a crash (CLAUDE.md rule 1)."""
+    try:
+        return model.model_validate_json(response.content)
+    except ValidationError as exc:
+        raise ApiError(response.status_code, None, f"invalid {model.__name__}") from exc
+
+
 def _error(response: httpx.Response) -> ApiError:
     try:
         body = ErrorResponse.model_validate_json(response.content)
@@ -74,7 +83,7 @@ class DeviceApi:
     async def _request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
         try:
             return await self.http.request(method, f"{self.base_url}{API}{path}", **kwargs)
-        except httpx.TransportError as exc:
+        except httpx.HTTPError as exc:  # transport, decoding, too many redirects
             raise Unreachable(str(exc)) from exc
 
     # --- pairing (§7.1) ------------------------------------------------------------------------
@@ -83,14 +92,14 @@ class DeviceApi:
         r = await self._request("POST", "/pairing/start", json=body.model_dump(mode="json"))
         if r.status_code != 200:
             raise _error(r)
-        return PairingStartResponse.model_validate_json(r.content)
+        return _parse(PairingStartResponse, r)
 
     async def pairing_poll(self, poll_token: str) -> PairingPending | PairingClaimed:
         r = await self._request("GET", "/pairing/poll", params={"poll_token": poll_token})
         if r.status_code == 202:
-            return PairingPending.model_validate_json(r.content)
+            return _parse(PairingPending, r)
         if r.status_code == 200:
-            return PairingClaimed.model_validate_json(r.content)
+            return _parse(PairingClaimed, r)
         raise _error(r)
 
     # --- auth (§7.2) ---------------------------------------------------------------------------
@@ -105,7 +114,7 @@ class DeviceApi:
         r = await self._request("POST", "/device/token", json=body.model_dump(mode="json"))
         if r.status_code != 200:
             raise _error(r)
-        token = DeviceTokenResponse.model_validate_json(r.content)
+        token = _parse(DeviceTokenResponse, r)
         self._token = token.access_token
         self._token_until = time.monotonic() + max(token.expires_in - TOKEN_MARGIN_S, 60)
         return self._token
@@ -124,14 +133,14 @@ class DeviceApi:
         r = await self._authed("GET", "/device/state", token, params=params)
         if r.status_code != 200:
             raise _error(r)
-        return StateResponse.model_validate_json(r.content)
+        return _parse(StateResponse, r)
 
     async def events(self, token: str, envelopes: list[dict[str, Any]]) -> EventBatchResponse:
         batch = EventBatchRequest.model_validate({"events": envelopes})
         r = await self._authed("POST", "/device/events", token, json=batch.model_dump(mode="json"))
         if r.status_code != 200:
             raise _error(r)
-        return EventBatchResponse.model_validate_json(r.content)
+        return _parse(EventBatchResponse, r)
 
     async def reported(self, token: str, message: ReportedMessage) -> None:
         await self._post_no_content("/device/reported", token, message)
@@ -166,7 +175,7 @@ class DeviceApi:
                 with part.open("ab" if offset else "wb") as fh:
                     async for chunk in r.aiter_bytes(CHUNK):
                         fh.write(chunk)
-        except httpx.TransportError as exc:
+        except httpx.HTTPError as exc:
             raise Unreachable(str(exc)) from exc
         return await asyncio.to_thread(_finish, part, dest, sha256)
 

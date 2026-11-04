@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import random
 import shutil
-from collections.abc import Callable
+import time
+from collections.abc import Awaitable, Callable
 from typing import Any, get_args
 
 from myboxi_agent import __version__
-from myboxi_agent.adapters.base import Placed
+from myboxi_agent.adapters.base import Placed, ReaderEvent
 from myboxi_agent.adapters.bundle import Adapters, sim_adapters
 from myboxi_agent.adapters.loudness import MpvLoudness
 from myboxi_agent.adapters.mpv import KNOWN_PROMPTS
@@ -74,6 +76,8 @@ UPDATE_STATES = frozenset(get_args(UpdateState))
 
 TICK_S = 0.1
 CONTROLLER_TICK_S = 1.0
+RESTART_S = 1.0
+RESTART_MAX_S = 60.0
 
 
 def build_adapters(settings: Settings) -> Adapters:
@@ -184,28 +188,31 @@ class App:
         )
         self.apply_handover()
         self.announcer.announce(Prompt.HELLO)  # SPEC §1.7: the box says it is ready
+        loops: list[tuple[str, Callable[[], Awaitable[None]]]] = [
+            ("reader", self._reader_loop),
+            ("buttons", self._buttons_loop),
+            ("tick", self._tick_loop),
+            ("control", self.control.serve),
+            ("sync", self.sync.run),
+            ("podcasts", self.podcasts.run),
+            ("mqtt", self.mqtt.run),
+        ]
+        if self.spotify is not None:
+            loops.append(("spotify", self.spotify.run))
+        if not self.settings.sim:
+            watch = NetworkWatch(
+                NetworkManager(),
+                self.adapters.system,
+                self.adapters.clock,
+                self._online_again,
+            )
+            loops.append(("network", watch.run))
+        loops += [("background", background) for background in self.adapters.background]
         try:
             async with asyncio.TaskGroup() as tg:
-                tg.create_task(self._reader_loop())
-                tg.create_task(self._buttons_loop())
-                tg.create_task(self._tick_loop())
-                tg.create_task(self.control.serve())
-                tg.create_task(self.sync.run())
-                tg.create_task(self.podcasts.run())
-                tg.create_task(self.mqtt.run())
-                if self.spotify is not None:
-                    tg.create_task(self.spotify.run())
-                if not self.settings.sim:
-                    watch = NetworkWatch(
-                        NetworkManager(),
-                        self.adapters.system,
-                        self.adapters.clock,
-                        self._online_again,
-                    )
-                    tg.create_task(watch.run())
+                for name, loop in loops:
+                    tg.create_task(supervised(name, loop))
                 tg.create_task(self._stop_on_request())
-                for background in self.adapters.background:
-                    tg.create_task(background())
         except* _Stop:
             pass
         finally:
@@ -258,16 +265,25 @@ class App:
 
     async def _reader_loop(self) -> None:
         async for event in self.adapters.reader.events():
-            if isinstance(event, Placed):
-                if isinstance(self.library.resolve(event.uid), Unknown | Loading):
-                    self.sync.fast_poll()
-                    self.podcasts.trigger()
-                self.controller.token_placed(event.uid)
-                session = self.controller.session
-                if session is not None and session.playing:
-                    self.library.mark_played(session.sources())
-            else:
-                self.controller.token_removed()
+            try:
+                self._reader_event(event)
+            except Exception:
+                # one bad event never ends the loop, and never in silence (SPEC §1.7)
+                log.exception("figure event failed")
+                with contextlib.suppress(Exception):
+                    self.announcer.announce(Prompt.TONE_ERROR)
+
+    def _reader_event(self, event: ReaderEvent) -> None:
+        if isinstance(event, Placed):
+            if isinstance(self.library.resolve(event.uid), Unknown | Loading):
+                self.sync.fast_poll()
+                self.podcasts.trigger()
+            self.controller.token_placed(event.uid)
+            session = self.controller.session
+            if session is not None and session.playing:
+                self.library.mark_played(session.sources())
+        else:
+            self.controller.token_removed()
 
     async def _buttons_loop(self) -> None:
         async for event in self.adapters.buttons.events():
@@ -280,18 +296,24 @@ class App:
                 else self.tracker.release(event.button)
             )
             for action in actions:
-                self.controller.button(action)
+                try:
+                    self.controller.button(action)
+                except Exception:
+                    log.exception("button failed", extra={"action": str(action)})
 
     async def _tick_loop(self) -> None:
         elapsed = 0.0
         while True:
             await asyncio.sleep(TICK_S)
-            for action in self.tracker.tick():
-                self.controller.button(action)
-            elapsed += TICK_S
-            if elapsed >= CONTROLLER_TICK_S:
-                elapsed = 0.0
-                self.controller.tick()
+            try:
+                for action in self.tracker.tick():
+                    self.controller.button(action)
+                elapsed += TICK_S
+                if elapsed >= CONTROLLER_TICK_S:
+                    elapsed = 0.0
+                    self.controller.tick()
+            except Exception:
+                log.exception("tick failed")
 
     # --- control socket ----------------------------------------------------------------------
 
@@ -499,6 +521,23 @@ def valid_soloist_key(key: object) -> bool:
 
 class _Stop(Exception):
     pass
+
+
+async def supervised(name: str, run: Callable[[], Awaitable[None]]) -> None:
+    """CLAUDE.md rule 1: an unexpected error in one loop (sync, MQTT, a reader) never takes
+    the others and playback down; the loop starts again after a growing pause."""
+    delay = RESTART_S
+    while True:
+        started = time.monotonic()
+        try:
+            await run()
+            return
+        except Exception:
+            log.exception("loop failed, restarting", extra={"loop": name})
+        if time.monotonic() - started > RESTART_MAX_S:
+            delay = RESTART_S  # it ran fine for a while: no long pause
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, RESTART_MAX_S)
 
 
 def _loudness(settings: Settings) -> MpvLoudness | None:

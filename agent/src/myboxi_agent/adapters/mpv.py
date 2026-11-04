@@ -86,7 +86,7 @@ class MpvClient:
         while True:
             try:
                 reader, writer = await asyncio.open_unix_connection(str(self.ipc))
-            except (FileNotFoundError, ConnectionRefusedError):
+            except OSError:  # not there yet, refused, or a stale socket file
                 await asyncio.sleep(0.2)
                 continue
             self.connected.set()
@@ -94,7 +94,7 @@ class MpvClient:
                 async with asyncio.TaskGroup() as tg:
                     tg.create_task(self._write(writer))
                     tg.create_task(self._read(reader))
-            except* (ConnectionError, asyncio.IncompleteReadError, EOFError):
+            except* (OSError, asyncio.IncompleteReadError, EOFError):
                 log.warning("mpv IPC connection lost", extra={"ipc": str(self.ipc)})
             finally:
                 self.connected.clear()
@@ -118,7 +118,11 @@ class MpvClient:
             except ValueError:
                 continue
             if "event" in message:
-                self.on_event(message)
+                try:
+                    self.on_event(message)
+                except Exception:
+                    # a failing callback must not cut the connection to mpv
+                    log.exception("mpv event handling failed", extra={"event": message["event"]})
             elif message.get("error") not in (None, "success"):
                 log.warning("mpv command failed", extra={"error": message.get("error")})
 
