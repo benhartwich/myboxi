@@ -27,6 +27,8 @@ from typing import Any
 
 import httpx
 
+from myboxi_agent import durable
+
 log = logging.getLogger(__name__)
 
 URL = "https://soloist-builds.spotifycdn.com/soloist_release_{arch}.tar.gz"
@@ -274,16 +276,20 @@ class Installer:
         staging.mkdir(parents=True)
         (staging / "soloist").write_bytes(binary)
         (staging / "soloist").chmod(0o755)
+        durable.fsync_file(staging / "soloist")
+        durable.fsync_dir(staging)
         code, out = await self.run([str(staging / "soloist"), "--version"])
         if code != 0:
             shutil.rmtree(staging, ignore_errors=True)
             raise InstallError("smoke_test", out[-200:])
         shutil.rmtree(release, ignore_errors=True)
         staging.rename(release)
+        durable.fsync_dir(self.paths.releases)
         link = self.paths.base / ".current.tmp"
         link.unlink(missing_ok=True)
         link.symlink_to(Path("releases") / stamp)
         link.replace(self.paths.current)  # atomic switch
+        durable.fsync_dir(self.paths.base)
         self._prune(stamp)
         state.release = stamp
         state.last_modified = head.headers.get("last-modified")

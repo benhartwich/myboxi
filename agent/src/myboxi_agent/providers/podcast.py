@@ -21,6 +21,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from myboxi_agent import durable
 from myboxi_agent.adapters.loudness import gain_for
 from myboxi_agent.adapters.outbox import EventOutbox
 from myboxi_agent.core.clock import Clock
@@ -274,7 +275,7 @@ class PodcastRefresher:
                 self.assets.db.asset_dir, sha, episode_suffix(episode.mime, episode.url)
             )
             dest.parent.mkdir(parents=True, exist_ok=True)
-            part.replace(dest)
+            await asyncio.to_thread(durable.replace, part, dest)
             self.assets.register(sha, size, dest)
         self.repo.downloaded(episode.content_id, episode.key, sha)
         log.info("episode downloaded", extra={"bytes": size})
