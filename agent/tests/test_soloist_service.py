@@ -153,6 +153,23 @@ async def test_broken_downloads_are_refused(tmp_path: Path, body: bytes, code: s
     assert not (tmp_path / "soloist" / "current").exists()
 
 
+async def test_archive_goes_to_disk_and_leaves_nothing_behind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """512 MB of RAM: the archive is streamed to a temporary file, removed afterwards."""
+    base = tmp_path / "soloist"
+    assert (await installer(tmp_path, Cdn()).update()).code == "installed"
+    assert not (base / ".download.tmp").exists()
+    monkeypatch.setattr("myboxi_agent.soloist.install.MAX_ARCHIVE", 100)
+    outcome = await installer(tmp_path, Cdn(modified="Mon, 05 Oct 2026 10:00:00 GMT")).update(
+        force=True
+    )
+    assert outcome.code == "failed"
+    assert read_state(SoloistPaths(base)).error == "too_large"
+    assert not (base / ".download.tmp").exists()
+    assert [p.name for p in (base / "releases").iterdir()] == ["20260925181322"]
+
+
 async def test_failing_smoke_test_keeps_the_old_release(tmp_path: Path) -> None:
     cdn = Cdn()
     await installer(tmp_path, cdn).update()
