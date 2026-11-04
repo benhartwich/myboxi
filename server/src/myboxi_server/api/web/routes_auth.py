@@ -18,9 +18,14 @@ from myboxi_server.api.web.deps import (
 from myboxi_server.api.web.redirects import local_path
 from myboxi_server.api.web.render import render
 from myboxi_server.auth import ratelimit
-from myboxi_server.auth.sessions import ABSOLUTE_LIFETIME, create_session, delete_session
+from myboxi_server.auth.sessions import (
+    ABSOLUTE_LIFETIME,
+    SessionInfo,
+    create_session,
+    delete_session,
+)
 from myboxi_server.domain import members
-from myboxi_server.domain.errors import DomainError
+from myboxi_server.domain.errors import DomainError, InvalidInputError
 from myboxi_server.settings import Settings
 
 router = APIRouter(dependencies=[Depends(csrf_protect)])
@@ -148,6 +153,74 @@ async def create_household(
         session=session,
         status_code=status,
     )
+
+
+async def _account_page(
+    request: Request,
+    db: DbSession,
+    session: SessionInfo,
+    *,
+    error: str | None = None,
+    notice: str | None = None,
+    status_code: int = 200,
+) -> Response:
+    others = await members.other_session_count(db, session.user.id, session.session_id)
+    return render(
+        request,
+        "account.html",
+        {"others": others, "error": error, "notice": notice},
+        session=session,
+        status_code=status_code,
+    )
+
+
+@router.get("/account")
+async def account(request: Request, db: DbSession, session: CurrentSession) -> Response:
+    return await _account_page(request, db, session)
+
+
+@router.post("/account/password")
+async def change_password(
+    request: Request,
+    db: DbSession,
+    session: CurrentSession,
+    current: Annotated[str, Form(max_length=1024)],
+    password: Annotated[str, Form(max_length=1024)],
+    password_repeat: Annotated[str, Form(max_length=1024)],
+) -> Response:
+    try:
+        await ratelimit.hit(
+            request.app.state.engine,
+            f"password-change:{session.user.id}",
+            ratelimit.PASSWORD_CHANGE_PER_USER,
+        )
+        if password != password_repeat:
+            raise InvalidInputError("Die beiden neuen Passwörter sind nicht gleich.")
+        await members.change_password(
+            db, session.user, current, password, keep_session=session.session_id
+        )
+    except ratelimit.RateLimitedError:
+        error, status = "Zu viele Versuche. Bitte später erneut versuchen.", 429
+    except (
+        DomainError
+    ) as exc:  # raised before anything changed: no rollback (keeps the user loaded)
+        error, status = exc.message, 400
+    else:
+        await db.commit()
+        return await _account_page(
+            request, db, session, notice="Passwort geändert. Andere Geräte sind abgemeldet."
+        )
+    return await _account_page(request, db, session, error=error, status_code=status)
+
+
+@router.post("/account/sessions/end-others")
+async def end_other_sessions(request: Request, db: DbSession, session: CurrentSession) -> Response:
+    count = await members.end_other_sessions(db, session.user.id, keep_session=session.session_id)
+    await db.commit()
+    notice = (
+        "Alle anderen Geräte sind abgemeldet." if count else "Es war kein anderes Gerät angemeldet."
+    )
+    return await _account_page(request, db, session, notice=notice)
 
 
 # Invitation token travels in the query string: never logged (app and nginx log paths only).

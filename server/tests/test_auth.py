@@ -364,3 +364,41 @@ async def test_smtp_invitation_is_sent_by_worker_with_rotated_token(
     token = sent[0].body.split("token=", 1)[1].split()[0]
     async with new_client(app) as guest:
         assert (await guest.get("/invite", params={"token": token})).status_code == 200
+
+
+async def test_password_change_ends_other_sessions(app: FastAPI, client: httpx.AsyncClient) -> None:
+    t = await make_tenant(app)
+    async with new_client(app) as other:
+        await login(other, t.owner_email)
+        csrf = await login(client, t.owner_email)
+        page = await client.get("/account")
+        assert "noch 1 Gerät angemeldet" in page.text
+        r = await client.post(
+            "/account/password",
+            data={"current": "falsch falsch", "password": "neues Passwort 1",
+                  "password_repeat": "neues Passwort 1", "csrf_token": csrf},
+        )  # fmt: skip
+        assert r.status_code == 400
+        assert "stimmt nicht" in r.text
+        r = await client.post(
+            "/account/password",
+            data={"current": PASSWORD, "password": "neues Passwort 1",
+                  "password_repeat": "neues Passwort 1", "csrf_token": csrf},
+        )  # fmt: skip
+        assert r.status_code == 200
+        assert "Passwort geändert" in r.text
+        assert (await other.get(f"/t/{t.tenant_id}/")).status_code in (303, 401)  # logged out
+        assert (await client.get(f"/t/{t.tenant_id}/")).status_code == 200  # this one stays
+    async with new_client(app) as fresh:
+        await login(fresh, t.owner_email, "neues Passwort 1")
+
+
+async def test_end_other_sessions(app: FastAPI, client: httpx.AsyncClient) -> None:
+    t = await make_tenant(app)
+    async with new_client(app) as other:
+        await login(other, t.owner_email)
+        csrf = await login(client, t.owner_email)
+        r = await client.post("/account/sessions/end-others", data={"csrf_token": csrf})
+        assert "Alle anderen Geräte sind abgemeldet" in r.text
+        assert (await other.get(f"/t/{t.tenant_id}/")).status_code in (303, 401)
+        assert (await client.get("/account")).status_code == 200
