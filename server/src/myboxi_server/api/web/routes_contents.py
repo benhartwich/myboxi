@@ -449,6 +449,8 @@ async def _accept_files(
             await db.commit()
             created.append(upload.id)
         except NotFoundError:
+            if staged is not None:
+                staged.unlink(missing_ok=True)
             raise
         except DomainError as exc:
             await db.rollback()

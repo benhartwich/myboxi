@@ -60,13 +60,11 @@ async def login(
     next: Annotated[str, Form()] = "/",
 ) -> Response:
     engine = request.app.state.engine
+    ip, account = client_ip(request, settings), email.strip().lower()
     try:
-        await ratelimit.hit(
-            engine, f"login:ip:{client_ip(request, settings)}", ratelimit.LOGIN_PER_IP
-        )
-        await ratelimit.hit(
-            engine, f"login:acct:{email.strip().lower()}", ratelimit.LOGIN_PER_ACCOUNT
-        )
+        await ratelimit.hit(engine, f"login:ip:{ip}", ratelimit.LOGIN_PER_IP)
+        await ratelimit.hit(engine, f"login:acct:{account}:{ip}", ratelimit.LOGIN_PER_ACCOUNT)
+        await ratelimit.check(engine, f"login:fail:{account}", ratelimit.LOGIN_FAILURES_PER_ACCOUNT)
     except ratelimit.RateLimitedError as exc:
         resp = render(
             request,
@@ -78,6 +76,7 @@ async def login(
         return resp
     user = await members.authenticate(db, email, password)
     if user is None:
+        await ratelimit.hit(engine, f"login:fail:{account}", ratelimit.LOGIN_FAILURES_PER_ACCOUNT)
         return render(
             request,
             "login.html",

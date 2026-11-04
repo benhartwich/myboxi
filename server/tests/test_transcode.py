@@ -13,17 +13,18 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import delete, func, select, update
 
-from myboxi_server.domain import assets, uploads
-from myboxi_server.domain.errors import InvalidInputError
+from myboxi_server.domain import assets, retention, uploads
+from myboxi_server.domain.errors import InvalidInputError, NotFoundError
 from myboxi_server.domain.revisions import tenant_config_rev
 from myboxi_server.jobs import context as job_context
+from myboxi_server.media import ffmpeg as media
 from myboxi_server.models import Asset, Content, ContentItem, Upload
 from myboxi_server.models.enums import ContentKind, UploadProfile, UploadStatus
 from myboxi_server.settings import Settings
 from myboxi_server.storage.filesystem import FilesystemAssetStore
 
 from .helpers import make_tenant, owner_ctx, sessionmaker_of
-from .media import color_png, loudness, probe, silence_wav, sine_mp3
+from .media import color_png, ffmpeg, loudness, probe, silence_wav, sine_mp3
 
 
 @pytest.fixture(scope="session")
@@ -305,6 +306,22 @@ async def test_cover_is_square_jpeg(app: FastAPI, media_dir: Path) -> None:
     assert (stream["width"], stream["height"]) == (512, 512)
 
 
+async def test_refused_cover_leaves_no_file(app: FastAPI, media_dir: Path) -> None:
+    t = await make_tenant(app)
+    cid = await _collection(app, t.tenant_id)
+    settings: Settings = app.state.settings
+    ctx = await owner_ctx(app, t.tenant_id)
+    for content_id, name in ((cid, "cover.gif"), (uuid.uuid4(), "cover.png")):
+        staged = _stage(settings, media_dir / "cover.png")
+        async with sessionmaker_of(app)() as db:
+            with pytest.raises((InvalidInputError, NotFoundError)):
+                await uploads.set_cover(
+                    db, ctx, app.state.asset_store, settings,
+                    content_id=content_id, filename=name, staged=staged,
+                )  # fmt: skip
+        assert not staged.exists()
+
+
 async def test_garbage_collection(app: FastAPI, media_dir: Path) -> None:
     a = await make_tenant(app, "A")
     b = await make_tenant(app, "B")
@@ -331,3 +348,38 @@ async def test_garbage_collection(app: FastAPI, media_dir: Path) -> None:
         await db.commit()
     assert await assets.collect_garbage(sessionmaker_of(app), store) == 1
     assert not path.exists()
+
+
+async def test_uploads_cannot_pull_in_other_files(tmp_path: Path) -> None:
+    """An "audio" upload that is really a DASH manifest pointing at a local file is not read."""
+    secret = tmp_path / "secret.m4a"
+    ffmpeg("-f", "lavfi", "-i", "sine=d=1", "-c:a", "aac", str(secret))
+    manifest = tmp_path / "upload.mp3"
+    manifest.write_text(
+        '<?xml version="1.0"?>\n'
+        '<MPD type="static" mediaPresentationDuration="PT1S" minBufferTime="PT1S"'
+        ' profiles="urn:mpeg:dash:profile:isoff-on-demand:2011">\n'
+        '<Period><AdaptationSet mimeType="audio/mp4">\n'
+        '<Representation id="1" bandwidth="1000" codecs="mp4a.40.2">\n'
+        f"<BaseURL>file://{secret}</BaseURL>\n"
+        "</Representation></AdaptationSet></Period></MPD>\n"
+    )
+    with pytest.raises(media.MediaError):
+        await media.check_audio("ffprobe", manifest)
+    with pytest.raises(media.MediaError):
+        await media.measure_loudness("ffmpeg", manifest)
+    assert (await media.check_audio("ffprobe", secret)).has_audio  # real files still work
+
+
+async def test_finished_uploads_are_forgotten_after_30_days(app: FastAPI, media_dir: Path) -> None:
+    """Upload rows keep the original file name; the transcoded track stays (retention)."""
+    t = await make_tenant(app)
+    cid = await _collection(app, t.tenant_id)
+    await _upload(app, t.tenant_id, cid, media_dir / "other.mp3")
+    async with sessionmaker_of(app)() as db:
+        later = dt.datetime.now(dt.UTC) + retention.UPLOAD_RETENTION + dt.timedelta(days=1)
+        counts = await retention.purge_expired(db, later)
+        await db.commit()
+        assert counts["upload"] == 1
+        assert await db.scalar(select(func.count()).select_from(Upload)) == 0
+        assert await db.scalar(select(func.count()).select_from(ContentItem)) == 1

@@ -170,7 +170,7 @@ Ohne MQTT fragen die Boxen alle 15 Minuten nach Änderungen (SPEC §5.2). Mit MQ
    install -m 0644 /opt/myboxi-server/deploy/logrotate/mosquitto /etc/logrotate.d/mosquitto
    ```
    Der Hook liest den Hostnamen aus `MYBOXI_SERVER_MQTT_HOST` (Schritt 2); vor Schritt 2 also erst die Zeile `MYBOXI_SERVER_MQTT_HOST=…` eintragen oder den Hook nach Schritt 2 noch einmal ausführen. Das Log von Mosquitto (mit IP-Adressen) bleibt 14 Tage.
-2. Konto des Servers anlegen. Das Passwort steht nur in `mqtt.env`, die allein der MQTT-Dienst liest (Web-UI und Worker brauchen es nicht).
+2. Konto des Servers anlegen. Das Passwort steht nur in `mqtt.env`. Die Datei gehört root und ist nur für root lesbar: systemd liest sie für den MQTT-Dienst ein, Web-UI und Worker kommen nicht heran.
    ```text
    MQTT_PASSWORD=$(openssl rand -base64 32)
    mosquitto_ctrl dynsec init /var/lib/mosquitto/dynamic-security.json myboxi-server "$MQTT_PASSWORD"
@@ -178,7 +178,7 @@ Ohne MQTT fragen die Boxen alle 15 Minuten nach Änderungen (SPEC §5.2). Mit MQ
    chmod 0600 /var/lib/mosquitto/dynamic-security.json
    systemctl restart mosquitto
    echo "MYBOXI_SERVER_MQTT_HOST=$MYBOXI_DOMAIN" >> /etc/myboxi-server/myboxi-server.env
-   install -m 0640 -g myboxi-server /dev/null /etc/myboxi-server/mqtt.env
+   install -m 0600 /dev/null /etc/myboxi-server/mqtt.env
    echo "MYBOXI_SERVER_MQTT_PASSWORD=$MQTT_PASSWORD" > /etc/myboxi-server/mqtt.env
    myboxi-server mqtt-setup
    ```

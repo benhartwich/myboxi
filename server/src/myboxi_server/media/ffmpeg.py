@@ -25,6 +25,16 @@ MAX_DURATION_MS = 6 * 3600 * 1000
 # Below this measured loudness the input is effectively silent; loudnorm would amplify noise.
 SILENCE_LUFS = -70.0
 
+# Input options for uploaded files: ffmpeg picks the demuxer from the content, so without a
+# whitelist an "audio" upload could be a playlist or manifest (DASH, concat) that reads other
+# local files into the user's track. Only the formats we accept, only plain files.
+AUDIO_INPUT = [
+    "-protocol_whitelist", "file", "-format_whitelist", "mp3,mov,wav,ogg,flac,aac,matroska",
+]  # fmt: skip
+IMAGE_INPUT = [
+    "-protocol_whitelist", "file", "-format_whitelist", "image2,png_pipe,jpeg_pipe,webp_pipe",
+]  # fmt: skip
+
 PROFILES: dict[UploadProfile, list[str]] = {
     # SPEC §3.8: mono 48 kbit/s for speech, stereo 96 kbit/s for music.
     UploadProfile.SPEECH: ["-ac", "1", "-b:a", "48k", "-application", "voip"],
@@ -66,7 +76,7 @@ async def _run(args: list[str], limit_s: float) -> tuple[int, bytes, bytes]:
 async def probe(ffprobe: str, path: Path) -> Probe:
     code, out, _ = await _run(
         [
-            ffprobe, "-v", "error", "-print_format", "json",
+            ffprobe, "-v", "error", *AUDIO_INPUT, "-print_format", "json",
             "-show_entries", "format=duration:format_tags=title:stream=codec_type",
             str(path),
         ],
@@ -109,7 +119,8 @@ async def measure_loudness(ffmpeg: str, src: Path) -> dict[str, str] | None:
     """First loudnorm pass. Returns the measurements, or None for (near) silence."""
     code, _, err = await _run(
         [
-            ffmpeg, "-hide_banner", "-nostdin", "-i", str(src), "-vn", "-map", "0:a:0",
+            ffmpeg, "-hide_banner", "-nostdin", *AUDIO_INPUT, "-i", str(src),
+            "-vn", "-map", "0:a:0",
             "-af", _loudnorm(":print_format=json"), "-f", "null", "-",
         ],
         limit_s=3600,
@@ -146,7 +157,7 @@ async def transcode(
         ]
     code, _, err = await _run(
         [
-            ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(src),
+            ffmpeg, "-hide_banner", "-nostdin", "-y", *AUDIO_INPUT, "-i", str(src),
             "-vn", "-sn", "-dn", "-map", "0:a:0", *filters,
             "-ar", "48000", "-c:a", "libopus", *PROFILES[profile],
             "-map_metadata", "-1", "-fflags", "+bitexact", "-flags:a", "+bitexact",
@@ -165,7 +176,8 @@ async def make_cover(ffmpeg: str, src: Path, dest: Path) -> None:
     """Square 512x512 JPEG for the app (SPEC v0.3 §3.8)."""
     code, _, _ = await _run(
         [
-            ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(src), "-frames:v", "1",
+            ffmpeg, "-hide_banner", "-nostdin", "-y", *IMAGE_INPUT, "-i", str(src),
+            "-frames:v", "1",
             "-vf", "scale=512:512:force_original_aspect_ratio=increase,crop=512:512",
             "-map_metadata", "-1", "-fflags", "+bitexact", "-q:v", "3", "-f", "image2",
             "-c:v", "mjpeg", str(dest),

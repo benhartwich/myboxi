@@ -83,11 +83,23 @@ def _cmd_worker(args: argparse.Namespace) -> int:
     return 0
 
 
+def _not_dumpable() -> None:
+    """API and worker run as the same user; without this they could read the broker's admin
+    password from /proc/<pid>/environ of the MQTT service (SPEC §10)."""
+    if sys.platform != "linux":
+        return
+    import ctypes
+
+    pr_set_dumpable = 4
+    ctypes.CDLL(None, use_errno=True).prctl(pr_set_dumpable, 0, 0, 0, 0)
+
+
 def _cmd_mqtt(args: argparse.Namespace) -> int:
     """SPEC §6 (M2): the MQTT service (systemd unit myboxi-server-mqtt)."""
     from myboxi_server.db import create_engine, create_sessionmaker
     from myboxi_server.mqtt.service import MqttService
 
+    _not_dumpable()
     settings = get_settings()
     configure_logging(settings.log_level, settings.log_format)
     if not settings.mqtt_enabled or settings.mqtt_password is None:

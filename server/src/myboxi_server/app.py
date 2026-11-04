@@ -72,6 +72,10 @@ class AccessLogMiddleware:
             return
         start = time.perf_counter()
         status = 500
+        # Device API answers carry secrets (device secret, MQTT password, tokens): no cache
+        # may keep them. Audio downloads keep their own caching.
+        path = str(scope.get("path", ""))
+        no_store = path.startswith("/api/") and not path.startswith("/api/v1/device/assets/")
 
         async def send_wrapper(message: Message) -> None:
             nonlocal status
@@ -80,6 +84,8 @@ class AccessLogMiddleware:
                 headers = list(message.get("headers", []))
                 present = {k.lower() for k, _ in headers}
                 headers.extend((k, v) for k, v in SECURITY_HEADERS.items() if k not in present)
+                if no_store and b"cache-control" not in present:
+                    headers.append((b"cache-control", b"no-store"))
                 message["headers"] = headers
             await send(message)
 

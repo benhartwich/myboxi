@@ -53,6 +53,31 @@ async def hit(engine: AsyncEngine, key: str, limits: Sequence[Limit]) -> None:
         raise RateLimitedError(max(retry_after, 1))
 
 
+_COUNT = text(
+    """
+    SELECT count, extract(epoch FROM (window_start + make_interval(secs => :win) - now()))
+    FROM rate_limit
+    WHERE key = :key AND window_start = to_timestamp(floor(extract(epoch FROM now()) / :win) * :win)
+    """
+)
+
+
+async def check(engine: AsyncEngine, key: str, limits: Sequence[Limit]) -> None:
+    """Raise ``RateLimitedError`` if ``key`` is already over a limit, without counting."""
+    retry_after = 0
+    async with engine.connect() as conn:
+        for limit in limits:
+            row = (
+                await conn.execute(
+                    _COUNT, {"key": f"{key}|{limit.window_s}", "win": limit.window_s}
+                )
+            ).first()
+            if row is not None and int(row[0]) >= limit.count:
+                retry_after = max(retry_after, math.ceil(float(row[1])))
+    if retry_after:
+        raise RateLimitedError(max(retry_after, 1))
+
+
 # Limits from SPEC v0.3 §7.1/§7.2 and the plan (login).
 CLAIM_PER_USER = (Limit(5, 60), Limit(20, 3600))
 CLAIM_PER_TENANT = (Limit(30, 3600),)
@@ -61,7 +86,10 @@ POLL_PER_TOKEN = (Limit(1, 2),)
 DEVICE_TOKEN_PER_DEVICE = (Limit(10, 60),)  # keyed by device and IP: no lockout from outside
 DEVICE_TOKEN_PER_IP = (Limit(30, 60), Limit(300, 3600))
 COMMAND_PER_USER = (Limit(30, 60), Limit(300, 3600))  # SPEC §6.2 remote commands
+# Keyed by account and IP, like device tokens: someone else's wrong passwords never lock a
+# parent out. Failed logins per account from all addresses have a higher ceiling of their own.
 LOGIN_PER_ACCOUNT = (Limit(10, 900),)
+LOGIN_FAILURES_PER_ACCOUNT = (Limit(100, 3600),)
 LOGIN_PER_IP = (Limit(50, 900),)
 TENANT_CREATE_PER_USER = (Limit(5, 3600),)  # SPEC v0.6 §3.2
 # "Box gestalten": only builds that miss the cache count (docs/gehaeuse.md).

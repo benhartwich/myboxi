@@ -8,9 +8,11 @@ import re
 
 import httpx
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from sqlalchemy import select, update
 
+from myboxi_server.api.web.deps import client_ip
+from myboxi_server.auth import ratelimit
 from myboxi_server.auth.tokens import hash_token
 from myboxi_server.cli import main as cli_main
 from myboxi_server.domain.authz import MIN_ROLE, Perm, role_can
@@ -115,6 +117,51 @@ async def test_login_rate_limited_per_account(app: FastAPI, client: httpx.AsyncC
     assert int(r.headers["retry-after"]) > 0
 
 
+async def test_strangers_cannot_lock_a_parent_out(app: FastAPI, client: httpx.AsyncClient) -> None:
+    """Wrong passwords from one address limit that address, not the account everywhere."""
+    t = await make_tenant(app)
+    token = csrf_from((await client.get("/login")).text)
+    await fresh_window(900, 10)
+    for _ in range(11):
+        await client.post(
+            "/login", data={"email": t.owner_email, "password": "nope nope", "csrf_token": token}
+        )
+    transport = httpx.ASGITransport(app=app, client=("192.0.2.7", 40000))
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as parent:
+        await login(parent, t.owner_email)  # asserts the redirect into the app
+
+
+async def test_failed_logins_per_account_have_a_ceiling(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    """Across all addresses, failures per account are capped; the right password then waits too."""
+    t = await make_tenant(app)
+    token = csrf_from((await client.get("/login")).text)
+    await fresh_window(3600, 30)
+    engine = app.state.engine
+    for _ in range(ratelimit.LOGIN_FAILURES_PER_ACCOUNT[0].count):
+        await ratelimit.hit(
+            engine, f"login:fail:{t.owner_email}", ratelimit.LOGIN_FAILURES_PER_ACCOUNT
+        )
+    r = await client.post(
+        "/login", data={"email": t.owner_email, "password": PASSWORD, "csrf_token": token}
+    )
+    assert r.status_code == 429
+
+
+def test_ipv6_clients_count_per_64() -> None:
+    settings = get_settings()
+
+    def ip(host: str) -> str:
+        scope: dict[str, object] = {"type": "http", "client": (host, 1), "headers": []}
+        return client_ip(Request(scope), settings)
+
+    assert ip("2001:db8:1:2:aaaa::1") == ip("2001:db8:1:2:bbbb::9") == "2001:db8:1:2::/64"
+    assert ip("2001:db8:1:3::1") != ip("2001:db8:1:2::1")
+    assert ip("203.0.113.5") == "203.0.113.5"
+    assert ip("::ffff:203.0.113.5") == "203.0.113.5"
+
+
 async def test_logout_invalidates_session(app: FastAPI, client: httpx.AsyncClient) -> None:
     t = await make_tenant(app)
     csrf = await login(client, t.owner_email)
@@ -157,6 +204,9 @@ async def test_security_headers(client: httpx.AsyncClient) -> None:
     r = await client.get("/login")
     assert r.headers["x-frame-options"] == "DENY"
     assert "default-src 'self'" in r.headers["content-security-policy"]
+    # device API answers may carry secrets (SPEC §7.1): never cached
+    r = await client.post("/api/v1/pairing/start", json={})
+    assert r.headers["cache-control"] == "no-store"
 
 
 async def _invite(client: httpx.AsyncClient, tid: object, csrf: str, email: str, role: str) -> str:
