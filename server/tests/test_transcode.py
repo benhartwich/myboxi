@@ -383,3 +383,22 @@ async def test_finished_uploads_are_forgotten_after_30_days(app: FastAPI, media_
         assert counts["upload"] == 1
         assert await db.scalar(select(func.count()).select_from(Upload)) == 0
         assert await db.scalar(select(func.count()).select_from(ContentItem)) == 1
+
+
+async def test_browser_recording_without_duration(app: FastAPI, tmp_path: Path) -> None:
+    """Recordings from the browser (MediaRecorder WebM) have no duration in their header."""
+    recording = tmp_path / "Gute Nacht von Oma.webm"
+    ffmpeg("-f", "lavfi", "-i", "sine=d=3", "-c:a", "libopus", "-f", "webm", "-live", "1",
+           str(recording))  # fmt: skip
+    t = await make_tenant(app)
+    cid = await _collection(app, t.tenant_id)
+    result = await _upload(app, t.tenant_id, cid, recording, UploadProfile.SPEECH)
+    assert result.status == UploadStatus.DONE
+    async with sessionmaker_of(app)() as db:
+        item = await db.scalar(select(ContentItem).where(ContentItem.content_id == cid))
+        assert item is not None
+        assert item.title == "Gute Nacht von Oma"
+        asset = await db.get(Asset, item.asset_id)
+        assert asset is not None
+        assert asset.duration_ms is not None
+        assert 2500 < asset.duration_ms < 3500

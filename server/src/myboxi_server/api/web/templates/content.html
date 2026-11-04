@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "_icons.html" as icon %}
 {% block title %}{{ content.title }} · Myboxi{% endblock %}
+{% block head %}{% if content.kind == 'collection' and ctx.can(Perm.UPLOAD) %}<script src="{{ asset('recorder.js') }}" defer></script>{% endif %}{% endblock %}
 {% block content %}
 <a class="back" href="/t/{{ tid }}/contents">{{ icon.back() }}Inhalte</a>
 <div class="row">
@@ -26,6 +27,27 @@
       </label>
       <button type="submit">Hochladen</button>
       <p class="muted">Die Lautstärke aller Titel wird angeglichen.</p>
+    </form>
+  </section>
+  <section class="card stack" id="recorder" hidden>
+    <h2>{{ icon.mic(22) }} Selbst aufnehmen</h2>
+    <p class="muted">Eine Geschichte vorlesen oder ein Lied singen. Aufgenommen wird mit dem Mikrofon dieses Geräts, hochgeladen erst, wenn du auf „Hinzufügen“ tippst.</p>
+    <p class="actions">
+      <button type="button" data-rec="start">{{ icon.mic(20) }}Aufnahme starten</button>
+      <button type="button" class="secondary" data-rec="stop" hidden>Stopp</button>
+      <span class="muted" data-rec="time" role="timer" aria-live="off" hidden>0:00</span>
+    </p>
+    <p class="muted" data-rec="status" role="status"></p>
+    <form method="post" action="/t/{{ tid }}/contents/{{ content.id }}/uploads" enctype="multipart/form-data" class="stack" data-upload hidden>
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="profile" value="speech">
+      <input type="file" name="files" hidden>
+      <audio controls data-rec="preview"></audio>
+      <label>Titel <input name="recording_title" maxlength="120" placeholder="z. B. Gute Nacht von Oma" required></label>
+      <p class="actions">
+        <button type="submit">{{ icon.upload(20) }}Hinzufügen</button>
+        <button type="button" class="secondary" data-rec="discard">Verwerfen</button>
+      </p>
     </form>
   </section>
   {% endif %}

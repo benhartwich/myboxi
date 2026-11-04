@@ -50,8 +50,10 @@ SECURITY_HEADERS = {
     b"referrer-policy": b"same-origin",
     b"content-security-policy": (
         # Spotify (SPEC v0.10 §3.6): covers in search results, the login of the household app.
+        # blob: media: listening to a recording before it is uploaded.
         b"default-src 'self'; img-src 'self' data: https://i.scdn.co https://*.spotifycdn.com; "
-        b"style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'self'; "
+        b"style-src 'self'; script-src 'self'; media-src 'self' blob:; "
+        b"frame-ancestors 'none'; base-uri 'self'; "
         b"form-action 'self' https://accounts.spotify.com"
     ),
 }
