@@ -51,6 +51,8 @@ class Session:
     play_started: float = 0.0
     last_saved: float = 0.0
     finished: bool = False
+    # The player lost the playlist (mpv restarted): play from here instead of resuming.
+    reload: ResumePoint | None = None
 
     def items(self) -> list[PlanItem]:
         return [self.plan.items[i] for i in self.order]
@@ -199,12 +201,21 @@ class Controller:
                 code = "stream_error"  # SPEC v0.11 §8.3
         else:
             self.announcer.announce(Prompt.TONE_ERROR)
-        if s is not None:
-            self.outbox.emit(
-                "playback_error",
-                PlaybackErrorData(token_id=s.plan.token_id, provider=s.plan.provider, code=code),
-            )
-            s.playing = False
+        if s is None:
+            return
+        self.outbox.emit(
+            "playback_error",
+            PlaybackErrorData(token_id=s.plan.token_id, provider=s.plan.provider, code=code),
+        )
+        if code == "decode_error" and not s.plan.context and s.plan.provider != "stream":
+            # One broken file: the player goes on with the next one or ends the playlist
+            # (``playlist_finished``), so the session keeps playing (sleep timer, saves).
+            return
+        if s.playing and not s.plan.context and s.plan.provider != "stream":
+            # e.g. mpv restarted: the playlist is gone, play_pause loads it again here.
+            s.reload = self.player.position() or ResumePoint(0, 0)
+            self._save(emit=False)  # CLAUDE.md rule 5
+        s.playing = False
 
     # --- Spotify Connect (SPEC v0.9 §8.1) ---------------------------------------------------
 
@@ -367,7 +378,7 @@ class Controller:
         s = Session(plan=plan, order=order, play_started=now, last_saved=now)
         self.session = s
         self.requested_volume = cfg.start_volume
-        self._apply_volume()
+        self._apply_volume(force=True)  # the player may have restarted at another volume
         self.announcer.announce(Prompt.TONE_START)
         self.player.play(s.items(), order.index(start.item_index), start.position_ms, plan.repeat)
         self._start_used(plan)
@@ -418,7 +429,14 @@ class Controller:
             if volume.limits(self.config(), self.clock.now(), self.clock.time_trusted()).locked:
                 self.announcer.announce(Prompt.QUIET_TIME)
                 return
-            self.player.resume()
+            if s.reload is not None:
+                self._apply_volume(force=True)
+                self.player.play(
+                    s.items(), s.reload.item_index, s.reload.position_ms, s.plan.repeat
+                )
+                s.reload = None
+            else:
+                self.player.resume()
             s.playing = True
             s.play_started = self.clock.monotonic()
             return
@@ -457,6 +475,7 @@ class Controller:
             self._finish(s)
             return
         s.playing = True
+        s.reload = None
         self._save(emit=False)
 
     def _previous(self) -> None:
@@ -489,6 +508,7 @@ class Controller:
             index = 0
         self.player.play(s.items(), index, 0, s.plan.repeat)
         s.playing = True
+        s.reload = None
         self._save(emit=False)
 
     def _finish(self, s: Session) -> None:

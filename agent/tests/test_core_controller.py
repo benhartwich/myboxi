@@ -204,6 +204,47 @@ def test_player_error_is_audible_and_reported(box: Box) -> None:
     assert len(box.outbox.of("playback_error")) == 1
 
 
+def test_broken_file_in_a_playlist_keeps_the_session_playing(box: Box) -> None:
+    """mpv goes on with the next file: sleep timer and resume saves keep running."""
+    box.set_config(sleep_timer_min=1)
+    box.library.by_uid[UID] = playable(3)
+    box.ctl.token_placed(UID)
+    box.ctl.player_error("decode_error")
+    assert box.announcer.said[-1] == (Prompt.TONE_ERROR,)
+    assert box.ctl.status().status == "playing"
+    box.clock.advance(60)
+    box.ctl.tick()
+    assert box.player.state == "paused"
+
+
+def test_player_restart_plays_again_from_the_position(box: Box) -> None:
+    """SPEC §1.7: the playlist is gone after an mpv crash; play_pause loads it again."""
+    plan = playable(3)
+    box.library.by_uid[UID] = plan
+    box.ctl.token_placed(UID)
+    box.player.index, box.player.position_ms = 1, 42_000
+    box.ctl.player_error("player_restart")
+    assert box.announcer.said[-1] == (Prompt.TONE_ERROR,)
+    assert box.ctl.status().status == "paused"
+    assert box.resume.points[plan.token_id] == ResumePoint(1, 42_000)
+    box.player.volumes.clear()
+    box.ctl.button(Action.PLAY_PAUSE)
+    assert box.player.calls[-1] == "play:1@42000"
+    assert box.player.volumes == [35]  # the restarted player starts muted
+    box.ctl.button(Action.PLAY_PAUSE)
+    box.ctl.button(Action.PLAY_PAUSE)
+    assert box.player.calls[-1] == "resume"
+
+
+def test_placing_a_figure_always_sets_the_volume(box: Box) -> None:
+    """SPEC §9.1: start_volume, even if the player lost it in between."""
+    box.library.by_uid[UID] = playable()
+    box.ctl.token_placed(UID)
+    box.player.volumes.clear()
+    box.ctl.token_placed(UID)
+    assert box.player.volumes == [35]
+
+
 # --- buttons (§9.4) -----------------------------------------------------------------------
 
 

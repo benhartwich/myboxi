@@ -258,3 +258,4 @@ def test_radio_offline_says_so() -> None:
     assert outbox.of("playback_error") == [
         PlaybackErrorData(token_id=plan.token_id, provider="stream", code="stream_error")
     ]
+
