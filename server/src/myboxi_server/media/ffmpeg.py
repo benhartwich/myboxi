@@ -93,11 +93,36 @@ async def probe(ffprobe: str, path: Path) -> Probe:
         duration_ms = 0
     tags: dict[str, Any] = fmt.get("tags", {})
     title = next((str(v) for k, v in tags.items() if k.lower() == "title" and v), None)
+    has_audio = any(s.get("codec_type") == "audio" for s in streams)
+    if duration_ms <= 0 and has_audio:
+        duration_ms = await _packet_duration_ms(ffprobe, path)
     return Probe(
         duration_ms=duration_ms,
-        has_audio=any(s.get("codec_type") == "audio" for s in streams),
+        has_audio=has_audio,
         title=title,
     )
+
+
+async def _packet_duration_ms(ffprobe: str, path: Path) -> int:
+    """Duration from the last audio packet: recordings from the browser (MediaRecorder WebM)
+    carry no duration in their header."""
+    code, out, _ = await _run(
+        [
+            ffprobe, "-v", "error", *AUDIO_INPUT, "-select_streams", "a:0",
+            "-show_entries", "packet=pts_time,duration_time", "-of", "csv=p=0", str(path),
+        ],
+        limit_s=120,
+    )  # fmt: skip
+    if code != 0:
+        return 0
+    end = 0.0
+    for line in out.decode(errors="replace").splitlines():
+        pts, _, dur = line.partition(",")
+        try:
+            end = max(end, float(pts) + (float(dur) if dur else 0.0))
+        except ValueError:
+            continue
+    return round(end * 1000) if math.isfinite(end) else 0
 
 
 async def check_audio(ffprobe: str, path: Path) -> Probe:
