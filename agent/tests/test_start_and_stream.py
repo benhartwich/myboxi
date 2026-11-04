@@ -259,3 +259,24 @@ def test_radio_offline_says_so() -> None:
         PlaybackErrorData(token_id=plan.token_id, provider="stream", code="stream_error")
     ]
 
+
+def test_radio_that_breaks_off_says_so() -> None:
+    """SPEC v0.11 §8.3: a stream that ends broke off: announcement, error tone, event."""
+    plan = radio()
+    ctl, (player, announcer, outbox) = controller(plan)
+    ctl.token_placed(UID)
+    ctl.playlist_finished()
+    assert announcer.said[-1] == (Prompt.UNAVAILABLE, Prompt.TONE_ERROR)
+    assert outbox.of("playback_error") == [
+        PlaybackErrorData(token_id=plan.token_id, provider="stream", code="stream_error")
+    ]
+    assert player.state == "stopped"
+
+
+def test_radio_error_and_end_report_once() -> None:
+    plan = radio()
+    ctl, (_, _, outbox) = controller(plan)
+    ctl.token_placed(UID)
+    ctl.player_error("decode_error")
+    ctl.playlist_finished()
+    assert len(outbox.of("playback_error")) == 1

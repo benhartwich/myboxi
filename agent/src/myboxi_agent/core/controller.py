@@ -186,10 +186,13 @@ class Controller:
                 self.system.request_repair()
 
     def playlist_finished(self) -> None:
-        """End of content without repeat: silence, position back to the start (SPEC §9.1)."""
+        """End of content without repeat: silence, position back to the start (SPEC §9.1).
+        A radio stream has no end: when it stops, it broke off (SPEC v0.11 §8.3)."""
         s = self.session
         if s is None:
             return
+        if s.plan.provider == "stream" and s.playing and not s.finished:
+            self.player_error("stream_error")
         self._finish(s)
 
     def player_error(self, code: str = "player_error") -> None:
