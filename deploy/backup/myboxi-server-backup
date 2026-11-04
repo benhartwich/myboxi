@@ -1,0 +1,36 @@
+#!/bin/sh
+# Nightly backup of the Myboxi server (docs/betrieb-debian13.md, "Backup"):
+# a dated database dump, kept for MYBOXI_BACKUP_KEEP days, and optionally an
+# rsync of dumps and assets to MYBOXI_BACKUP_RSYNC_TARGET. Database and assets
+# belong together; assets are content-addressed and never change, so an
+# incremental rsync is enough. Run by myboxi-server-backup.service as root.
+set -eu
+
+[ -r /etc/myboxi-server/backup.env ] && . /etc/myboxi-server/backup.env
+
+dir="${MYBOXI_BACKUP_DIR:-/var/backups/myboxi-server}"
+keep="${MYBOXI_BACKUP_KEEP:-14}"
+db="${MYBOXI_BACKUP_DATABASE:-myboxi-server}"
+assets="${MYBOXI_BACKUP_ASSETS:-/var/lib/myboxi-server/assets}"
+stamp="$(date +%F)"
+
+umask 077
+mkdir -p "$dir"
+chmod 0700 "$dir"
+
+# Dump to a temporary name first: a crash never leaves a truncated dump behind.
+tmp="$dir/.myboxi-server-$stamp.dump.tmp"
+runuser -u postgres -- pg_dump --format=custom "$db" > "$tmp"
+# A dump that pg_restore cannot read is not a backup.
+pg_restore --list "$tmp" > /dev/null
+mv -f "$tmp" "$dir/myboxi-server-$stamp.dump"
+ln -sfn "myboxi-server-$stamp.dump" "$dir/myboxi-server-latest.dump"
+
+find "$dir" -maxdepth 1 -name 'myboxi-server-*.dump' -type f -mtime +"$keep" -delete
+
+if [ -n "${MYBOXI_BACKUP_RSYNC_TARGET:-}" ]; then
+  rsync -a --mkpath --delete "$dir/" "$MYBOXI_BACKUP_RSYNC_TARGET/db/"
+  rsync -a --mkpath "$assets/" "$MYBOXI_BACKUP_RSYNC_TARGET/assets/"
+fi
+
+echo "myboxi-server-backup: $dir/myboxi-server-$stamp.dump"

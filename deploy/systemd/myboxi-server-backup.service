@@ -1,0 +1,13 @@
+[Unit]
+Description=Myboxi server backup (database dump, optional off-site rsync)
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/myboxi-server-backup
+Nice=10
+IOSchedulingClass=idle
+PrivateTmp=yes
+ProtectHome=read-only
+NoNewPrivileges=yes
