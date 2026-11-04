@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly Myboxi server backup
+
+[Timer]
+# Before the worker's clean-up at 03:17 (docs/betrieb-debian13.md).
+OnCalendar=*-*-* 02:40
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
