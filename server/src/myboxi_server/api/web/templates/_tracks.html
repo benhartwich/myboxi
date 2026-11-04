@@ -41,7 +41,8 @@
         {% endif %}
         {% endfor %}
         <form method="post" action="/t/{{ tid }}/contents/{{ content.id }}/items/{{ item.id }}/delete" class="inline"
-              hx-post="/t/{{ tid }}/contents/{{ content.id }}/items/{{ item.id }}/delete" hx-target="#tracks" hx-swap="outerHTML">
+              hx-post="/t/{{ tid }}/contents/{{ content.id }}/items/{{ item.id }}/delete" hx-target="#tracks" hx-swap="outerHTML"
+              data-confirm="„{{ item.title }}“ entfernen?">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <button class="icon danger" aria-label="{{ item.title }} entfernen">✕</button>
         </form>

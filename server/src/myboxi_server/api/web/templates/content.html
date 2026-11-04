@@ -16,7 +16,7 @@
   {% if ctx.can(Perm.UPLOAD) %}
   <section class="dropzone">
     <h2>{{ icon.upload(22) }} Titel hinzufügen</h2>
-    <form method="post" action="/t/{{ tid }}/contents/{{ content.id }}/uploads" enctype="multipart/form-data" class="stack">
+    <form method="post" action="/t/{{ tid }}/contents/{{ content.id }}/uploads" enctype="multipart/form-data" class="stack" data-upload>
       <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
       <label>Audiodateien (MP3, M4A, WAV, OGG, FLAC)
         <input type="file" name="files" accept=".mp3,.m4a,.wav,.ogg,.oga,.opus,.flac,audio/*" multiple required>
@@ -50,7 +50,7 @@
 </section>
 <section class="card danger-zone">
   <h2>Inhalt löschen</h2>
-  <form method="post" action="/t/{{ tid }}/contents/{{ content.id }}/delete">
+  <form method="post" action="/t/{{ tid }}/contents/{{ content.id }}/delete" data-confirm="„{{ content.title }}“ wirklich löschen? Figuren damit spielen danach nichts mehr.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="danger">Inhalt löschen</button>
   </form>

@@ -35,7 +35,7 @@
     </fieldset>
   </form>
   {% if binding and editable %}
-  <form method="post" action="/t/{{ tid }}/figures/{{ token.id }}/binding/delete">
+  <form method="post" action="/t/{{ tid }}/figures/{{ token.id }}/binding/delete" data-confirm="Zuordnung lösen? Die Figur spielt danach nichts mehr.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="secondary small">Zuordnung lösen</button>
   </form>
@@ -92,7 +92,7 @@
 </section>
 <section class="card danger-zone">
   <h2>Figur löschen</h2>
-  <form method="post" action="/t/{{ tid }}/figures/{{ token.id }}/delete">
+  <form method="post" action="/t/{{ tid }}/figures/{{ token.id }}/delete" data-confirm="Figur „{{ token.label }}“ wirklich löschen?">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="danger">Figur löschen</button>
   </form>
