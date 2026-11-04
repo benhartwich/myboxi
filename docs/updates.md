@@ -7,7 +7,7 @@ Boxen ab Image 0.3.0 aktualisieren sich selbst (SPEC §11.1). Diese Seite beschr
 1. Ein Tag `box-vX.Y.Z` auf `main` startet den Workflow `image`. Er prüft zuerst, ob der Tag zur Agent-Version in `agent/pyproject.toml` passt.
 2. Der Build erzeugt das Image und das Update-Paket `myboxi-agent-X.Y.Z-arm64.tar.xz`. Das Paket enthält das Verzeichnis `X.Y.Z/` mit Venv und Ansagen.
 3. `tools/release/make_manifest.py` schreibt `manifest.json` mit Version, URL, SHA-256 und Größe des Pakets.
-4. Die CI signiert das Manifest mit dem Schlüssel aus dem Secret `MYBOXI_UPDATE_KEY` (Ed25519) und prüft die Signatur gegen den öffentlichen Schlüssel im Repository.
+4. Ein eigener CI-Job signiert das Manifest mit dem Schlüssel aus dem Secret `MYBOXI_UPDATE_KEY` (Ed25519) und prüft die Signatur gegen den öffentlichen Schlüssel im Repository. Der Job läuft getrennt vom Build, lädt nur das veröffentlichte Paket, prüft dessen Prüfsumme und signiert. So kommt der Code, den der Build ausführt (Pakete, PyTorch, Sprachausgabe), nie an den Schlüssel. Der Job läuft in der GitHub-Umgebung `update-signing`: Dort liegt das Secret, und eine Freigabe durch den Projektinhaber ist Pflicht (Settings → Environments → `update-signing` → Required reviewers).
 5. Manifest und Signatur landen im Release `channel-stable`. Die Boxen lesen dieselbe URL: `…/releases/download/channel-stable/manifest.json`.
 
 Auf der Box prüft `myboxi-updater.service` drei Minuten nach dem Start, danach stündlich und jedes Mal, wenn die Box wieder online ist. Sie installiert nur mit gültiger Signatur, nur neuere Versionen und nie, solange etwas spielt. Läuft die neue Version nicht, kehrt sie zur alten zurück. Den Stand zeigt die App auf der Box-Seite.
