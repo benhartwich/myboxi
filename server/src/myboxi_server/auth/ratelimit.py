@@ -91,6 +91,7 @@ COMMAND_PER_USER = (Limit(30, 60), Limit(300, 3600))  # SPEC §6.2 remote comman
 LOGIN_PER_ACCOUNT = (Limit(10, 900),)
 LOGIN_FAILURES_PER_ACCOUNT = (Limit(100, 3600),)
 LOGIN_PER_IP = (Limit(50, 900),)
+PASSWORD_CHANGE_PER_USER = (Limit(10, 900),)  # guessing the current password while logged in
 TENANT_CREATE_PER_USER = (Limit(5, 3600),)  # SPEC v0.6 §3.2
 # "Box gestalten": only builds that miss the cache count (docs/gehaeuse.md).
 CASE_BUILD_PER_IP = (Limit(60, 600), Limit(400, 86400))

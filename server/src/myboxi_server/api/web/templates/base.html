@@ -31,6 +31,7 @@
     {% endif %}
     <div class="appbar-end">
       {% if tid or path not in ('/households', '/') %}<a class="pill" href="/households">Haushalte {{ icon.chevron() }}</a>{% endif %}
+      <a class="appbar-link" href="/account"{% if path == '/account' %} aria-current="page"{% endif %}>Konto</a>
       <form method="post" action="/logout" class="inline logout{% if tid %} in-tenant{% endif %}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <button class="link">Abmelden</button>

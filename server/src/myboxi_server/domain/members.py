@@ -7,14 +7,14 @@ import re
 import uuid
 from dataclasses import dataclass
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from myboxi_server.auth.passwords import hash_secret_async, verify_secret_async
 from myboxi_server.auth.tokens import hash_token, new_token
 from myboxi_server.domain.authz import Perm, TenantContext
 from myboxi_server.domain.errors import ConflictError, InvalidInputError, NotFoundError
-from myboxi_server.models import Invitation, Membership, Tenant, User
+from myboxi_server.models import Invitation, Membership, Tenant, User, WebSession
 from myboxi_server.models.enums import Role
 
 INVITATION_TTL = dt.timedelta(days=7)
@@ -102,6 +102,40 @@ async def authenticate(db: AsyncSession, email: str, password: str) -> User | No
     if not ok or user is None or not user.is_active:
         return None
     return user
+
+
+async def change_password(
+    db: AsyncSession, user: User, current: str, new: str, *, keep_session: uuid.UUID
+) -> None:
+    """Needs the current password; ends every other session of the user (a leaked password
+    should not keep working anywhere). The caller commits."""
+    if not await verify_secret_async(user.password_hash, current):
+        raise InvalidInputError("Das bisherige Passwort stimmt nicht.")
+    check_password(new)
+    user.password_hash = await hash_secret_async(new)
+    await end_other_sessions(db, user.id, keep_session=keep_session)
+
+
+async def end_other_sessions(
+    db: AsyncSession, user_id: uuid.UUID, *, keep_session: uuid.UUID
+) -> int:
+    """Log the user out everywhere else. The caller commits."""
+    result = await db.execute(
+        delete(WebSession)
+        .where(WebSession.user_id == user_id, WebSession.id != keep_session)
+        .returning(WebSession.id)
+    )
+    return len(result.all())
+
+
+async def other_session_count(db: AsyncSession, user_id: uuid.UUID, keep_session: uuid.UUID) -> int:
+    return (
+        await db.scalar(
+            select(func.count())
+            .select_from(WebSession)
+            .where(WebSession.user_id == user_id, WebSession.id != keep_session)
+        )
+    ) or 0
 
 
 async def tenant_context(
