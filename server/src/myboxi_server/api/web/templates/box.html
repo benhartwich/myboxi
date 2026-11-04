@@ -188,7 +188,7 @@
 <section class="card danger-zone">
   <h2>Box entfernen</h2>
   <p class="muted">Die Box verlässt den Haushalt und löscht beim nächsten Kontakt ihre Inhalte. Sie meldet sich danach mit einem neuen Code.</p>
-  <form method="post" action="/t/{{ tid }}/boxes/{{ device.id }}/remove">
+  <form method="post" action="/t/{{ tid }}/boxes/{{ device.id }}/remove" data-confirm="{{ device.name or 'Box' }} wirklich entfernen? Die Box löscht danach ihre Inhalte.">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <button class="danger">Box entfernen</button>
   </form>
