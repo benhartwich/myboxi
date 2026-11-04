@@ -13,6 +13,7 @@
   <link rel="preload" href="/static/fonts/figtree-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="{{ asset('app.css') }}">
   <script src="{{ asset('htmx.min.js') }}" defer></script>
+  <script src="{{ asset('app.js') }}" defer></script>
   {% block head %}{% endblock %}
 </head>
 <body class="{% if user and tid %}has-tabs{% endif %}" {% if csrf_token %}hx-headers='{"X-CSRF-Token": "{{ csrf_token }}"}'{% endif %}>
