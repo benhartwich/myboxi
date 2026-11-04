@@ -214,9 +214,11 @@ class Controller:
             # One broken file: the player goes on with the next one or ends the playlist
             # (``playlist_finished``), so the session keeps playing (sleep timer, saves).
             return
-        if s.playing and not s.plan.context and s.plan.provider != "stream":
-            # e.g. mpv restarted: the playlist is gone, play_pause loads it again here.
-            s.reload = self.player.position() or ResumePoint(0, 0)
+        if not s.finished and not s.plan.context:
+            # e.g. mpv restarted, also while paused: the playlist is gone, so play_pause loads
+            # it again instead of resuming an empty player (SPEC §1.7). A stream starts live.
+            live = s.plan.provider == "stream"
+            s.reload = ResumePoint(0, 0) if live else self.player.position() or ResumePoint(0, 0)
             self._save(emit=False)  # CLAUDE.md rule 5
         s.playing = False
 

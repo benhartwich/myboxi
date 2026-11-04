@@ -236,6 +236,32 @@ def test_player_restart_plays_again_from_the_position(box: Box) -> None:
     assert box.player.calls[-1] == "resume"
 
 
+def test_player_restart_while_paused_plays_again_from_the_position(box: Box) -> None:
+    """SPEC §1.7: paused when mpv restarted; play_pause must not resume an empty player."""
+    plan = playable(3)
+    box.library.by_uid[UID] = plan
+    box.ctl.token_placed(UID)
+    box.player.index, box.player.position_ms = 2, 7_000
+    box.ctl.button(Action.PLAY_PAUSE)
+    box.ctl.player_error("player_restart")
+    box.ctl.button(Action.PLAY_PAUSE)
+    assert box.player.calls[-1] == "play:2@7000"
+    assert box.ctl.status().status == "playing"
+
+
+def test_player_restart_with_radio_starts_the_stream_again(box: Box) -> None:
+    """SPEC v0.11 §8.3: live, so from the start; never an empty player."""
+    radio = Playable(uuid.uuid4(), uuid.uuid4(), (PlanItem("https://r.example/live", "R", 0),),
+                     False, False, "off", "stream")  # fmt: skip
+    box.library.by_uid[UID] = radio
+    box.ctl.token_placed(UID)
+    box.player.position_ms = 90_000
+    box.ctl.player_error("player_restart")
+    assert box.announcer.said[-1] == (Prompt.UNAVAILABLE, Prompt.TONE_ERROR)
+    box.ctl.button(Action.PLAY_PAUSE)
+    assert box.player.calls[-1] == "play:0@0"
+
+
 def test_placing_a_figure_always_sets_the_volume(box: Box) -> None:
     """SPEC §9.1: start_volume, even if the player lost it in between."""
     box.library.by_uid[UID] = playable()
