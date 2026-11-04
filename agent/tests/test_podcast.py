@@ -33,6 +33,7 @@ from myboxi_agent.store.repos import (
     ResumeRepo,
     StateRepo,
 )
+from myboxi_agent.testing import FakeOutbox
 from myboxi_protocol.state import DeviceConfig, StateResponse
 
 UID = "04A2B3C4D5E680"
@@ -426,9 +427,77 @@ async def test_interrupted_download_resumes_with_range(db: Database) -> None:
     assert Path(plan.items[0].source).read_bytes() == server.files["/1.mp3"]
 
 
-async def test_storage_full_is_reported_once(db: Database) -> None:
-    from myboxi_agent.testing import FakeOutbox
+async def test_an_html_page_is_no_episode(db: Database) -> None:
+    """SPEC v0.8 §8.2: e.g. a login page instead of the enclosure never becomes an episode."""
+    lib = LibraryRepo(db)
+    lib.activate(podcast_snapshot(keep_latest=1))
+    server = FeedServer(rss(item(1, 1)))
+    plain = server.handler
 
+    def html(request: httpx.Request) -> httpx.Response:
+        response = plain(request)
+        if request.url.path.endswith(".mp3"):
+            return httpx.Response(200, content=b"<html>", headers={"Content-Type": "text/html"})
+        return response
+
+    server.handler = html  # pyright: ignore[reportAttributeAccessIssue]
+    await refresher(db, server).refresh_once()
+    assert isinstance(lib.resolve(UID), Loading)
+    assert lib.podcasts.selected()[0].failures == 1
+
+
+async def test_download_without_length_stops_when_the_disk_fills(
+    db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """SPEC §4.1: no Content-Length, so the box looks at the disk while it downloads."""
+    from myboxi_agent.providers import podcast
+
+    monkeypatch.setattr(podcast, "SPACE_CHECK_BYTES", 1000)
+    lib = LibraryRepo(db)
+    lib.activate(podcast_snapshot(keep_latest=1))
+    server = FeedServer(rss(item(1, 1)))
+    plain = server.handler
+
+    def unsized(request: httpx.Request) -> httpx.Response:
+        response = plain(request)
+        if not request.url.path.endswith(".mp3"):
+            return response
+
+        async def body() -> AsyncIterator[bytes]:
+            for _ in range(10):
+                yield b"x" * 600
+
+        return httpx.Response(200, content=body())
+
+    server.handler = unsized  # pyright: ignore[reportAttributeAccessIssue]
+    asked: list[int] = []
+
+    def disk_free() -> int:  # the disk fills as the episode arrives
+        asked.append(1)
+        return podcast.DISK_RESERVE + 3000 - 1000 * (len(asked) - 1)
+
+    outbox = FakeOutbox()
+    r = refresher(db, server, outbox=outbox)
+    r.disk_free = disk_free
+    await r.refresh_once()
+    assert len(outbox.of("storage_full")) == 1
+    assert not list((db.asset_dir / "tmp").glob("*.part"))  # the space back
+    assert isinstance(lib.resolve(UID), Loading)
+    assert lib.podcasts.selected()[0].failures == 0  # no broken episode, just no space
+
+
+async def test_stale_partial_downloads_are_removed(db: Database) -> None:
+    lib = LibraryRepo(db)
+    lib.activate(podcast_snapshot(keep_latest=1))
+    tmp = db.asset_dir / "tmp"
+    tmp.mkdir(parents=True)
+    (tmp / "gone-episode.part").write_bytes(b"x" * 100)
+    await refresher(db, FeedServer(rss(item(1, 1)))).refresh_once()
+    assert not (tmp / "gone-episode.part").exists()
+    assert isinstance(lib.resolve(UID), Playable)
+
+
+async def test_storage_full_is_reported_once(db: Database) -> None:
     lib = LibraryRepo(db)
     lib.activate(podcast_snapshot(keep_latest=1))
     outbox = FakeOutbox()
