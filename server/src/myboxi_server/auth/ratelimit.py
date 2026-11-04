@@ -81,6 +81,9 @@ async def check(engine: AsyncEngine, key: str, limits: Sequence[Limit]) -> None:
 # Limits from SPEC v0.3 §7.1/§7.2 and the plan (login).
 CLAIM_PER_USER = (Limit(5, 60), Limit(20, 3600))
 CLAIM_PER_TENANT = (Limit(30, 3600),)
+# Wrong codes from all households together: many accounts guessing in parallel stay far
+# below the 10^6 codes (6 digits, valid for 10 minutes).
+CLAIM_FAILURES_GLOBAL = (Limit(500, 3600),)
 PAIRING_START_PER_IP = (Limit(10, 3600),)
 POLL_PER_TOKEN = (Limit(1, 2),)
 DEVICE_TOKEN_PER_DEVICE = (Limit(10, 60),)  # keyed by device and IP: no lockout from outside

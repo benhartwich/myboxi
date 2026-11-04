@@ -15,6 +15,7 @@ from sqlalchemy import select, text, update
 
 from myboxi_protocol.errors import ErrorCode, ErrorResponse
 from myboxi_protocol.pairing import ClaimResponse, PairingClaimed, PairingPending
+from myboxi_server.auth import ratelimit
 from myboxi_server.logconfig import JsonFormatter
 from myboxi_server.models import Device, DeviceConfig, Pairing
 from myboxi_server.models.enums import Role
@@ -167,6 +168,26 @@ async def test_claim_rate_limit_per_hour(app: FastAPI, client: httpx.AsyncClient
         )
         await db.commit()
     r = await _claim_api(client, t.tenant_id, csrf, "000000")
+    assert r.status_code == 429
+
+
+async def test_wrong_codes_from_all_households_have_a_ceiling(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    """Many accounts guessing codes in parallel are stopped too (SPEC §7.1)."""
+    t = await make_tenant(app)
+    started = await start_pairing(client)
+    csrf = await login(client, t.owner_email)
+    await fresh_window(3600, 30)
+    wrong = f"{(int(started.code) + 1) % 1_000_000:06d}"
+    assert (await _claim_api(client, t.tenant_id, csrf, wrong)).status_code == 400
+    async with sessionmaker_of(app)() as db:
+        await db.execute(
+            text("UPDATE rate_limit SET count = :n WHERE key = 'claim:failed|3600'"),
+            {"n": ratelimit.CLAIM_FAILURES_GLOBAL[0].count},
+        )
+        await db.commit()
+    r = await _claim_api(client, t.tenant_id, csrf, started.code)
     assert r.status_code == 429
 
 
