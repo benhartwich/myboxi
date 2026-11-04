@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
 import subprocess
 import time
@@ -17,11 +18,12 @@ def _run(cmd: list[str]) -> str:
 
 
 class SystemClock:
+    """``time_trusted`` only reads the last answer: ``timedatectl`` runs in ``run``, in a
+    thread, so the controller's tick never waits for it (CLAUDE.md rule 1)."""
+
     def __init__(self, *, assume_trusted: bool = False, runner: Runner = _run) -> None:
-        self._assume = assume_trusted
         self._runner = runner
         self._trusted = assume_trusted
-        self._checked = -CHECK_EVERY_S
 
     def monotonic(self) -> float:
         return time.monotonic()
@@ -30,15 +32,21 @@ class SystemClock:
         return dt.datetime.now(dt.UTC)
 
     def time_trusted(self) -> bool:
+        return self._trusted
+
+    def check(self) -> bool:
         """``timedatectl``: NTPSynchronized=yes once synced since boot. Sticky once true."""
-        if self._trusted:
-            return True
-        now = time.monotonic()
-        if now - self._checked >= CHECK_EVERY_S:
-            self._checked = now
+        if not self._trusted:
             try:
                 out = self._runner(["timedatectl", "show", "--property=NTPSynchronized"])
             except (OSError, subprocess.SubprocessError):
                 out = ""
             self._trusted = out.strip() == "NTPSynchronized=yes"
         return self._trusted
+
+    async def run(self) -> None:
+        """Background task: ask until the time is trusted, then stop."""
+        while True:
+            if await asyncio.to_thread(self.check):
+                return
+            await asyncio.sleep(CHECK_EVERY_S)

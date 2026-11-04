@@ -363,8 +363,26 @@ def test_setup_mode_starts_the_setup_service() -> None:
 def test_clock_trust_follows_ntp_and_sticks() -> None:
     answers = ["NTPSynchronized=no\n", "NTPSynchronized=yes\n", "NTPSynchronized=no\n"]
     clock = SystemClock(runner=lambda _cmd: answers.pop(0))
-    assert not clock.time_trusted()
-    clock._checked = -1e9  # pyright: ignore[reportPrivateUsage]
+    assert not clock.check()
+    assert clock.check()
+    assert clock.check()  # stays trusted until reboot (SPEC §5.6)
     assert clock.time_trusted()
-    clock._checked = -1e9  # pyright: ignore[reportPrivateUsage]
-    assert clock.time_trusted()  # stays trusted until reboot (SPEC §5.6)
+    assert answers == ["NTPSynchronized=no\n"]  # not asked again
+
+
+async def test_clock_asks_ntp_in_the_background(monkeypatch: pytest.MonkeyPatch) -> None:
+    """SPEC §5.6: ``time_trusted`` never runs timedatectl itself (the controller's tick)."""
+    monkeypatch.setattr("myboxi_agent.adapters.clock.CHECK_EVERY_S", 0.01)
+    answers = ["NTPSynchronized=no\n", "NTPSynchronized=yes\n"]
+    asked: list[list[str]] = []
+
+    def runner(cmd: list[str]) -> str:
+        asked.append(cmd)
+        return answers.pop(0)
+
+    clock = SystemClock(runner=runner)
+    assert not clock.time_trusted()
+    assert asked == []
+    await asyncio.wait_for(clock.run(), 2)  # ends once trusted
+    assert clock.time_trusted()
+    assert len(asked) == 2

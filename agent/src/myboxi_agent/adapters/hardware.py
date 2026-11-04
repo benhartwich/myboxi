@@ -257,6 +257,7 @@ def hardware_adapters(settings: Settings) -> Adapters:  # pragma: no cover - wir
         allow_explicit=lambda: False,
     )
     background: list[Background] = [
+        clock.run,  # SPEC §5.6: NTP state, off the event loop
         MpvProcess(
             mpv_args(settings.mpv_path, player_ipc, settings.audio_output, "myboxi"),
             player_ipc,
