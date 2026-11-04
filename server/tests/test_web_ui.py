@@ -96,7 +96,6 @@ async def test_destructive_forms_ask_first(ui: Ui) -> None:
     assert "aus dem Haushalt entfernen?" in members.text or "/remove" not in members.text
 
 
-
 async def test_tracks_can_be_heard_in_the_app(app: FastAPI, ui: Ui) -> None:
     """Each track has a player; the audio is only served to the household's members."""
     page = await ui.client.get(ui.url(f"/contents/{ui.lib.content_id}"))
@@ -110,6 +109,7 @@ async def test_tracks_can_be_heard_in_the_app(app: FastAPI, ui: Ui) -> None:
     async with new_client(app) as stranger:
         await login(stranger, other.owner_email)
         assert (await stranger.get(urls[0])).status_code == 404
+
 
 # --- exactly one revision per write (acceptance criterion) -------------------------------
 
