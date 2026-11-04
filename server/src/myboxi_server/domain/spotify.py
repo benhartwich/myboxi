@@ -350,7 +350,11 @@ class SpotifyWeb:
         cached = self._tokens.get(tenant_id)
         if cached is not None and not fresh and time.monotonic() < cached[1]:
             return cached[0]
-        account = await db.get(SpotifyAccount, tenant_id)
+        # Locked until the caller commits: two processes refreshing with the same token at once
+        # would make Spotify reject the second (rotation) and disconnect the household.
+        account = await db.get(
+            SpotifyAccount, tenant_id, with_for_update=True, populate_existing=True
+        )
         refresh = (
             unseal(settings, PURPOSE, account.refresh_token)
             if account is not None and account.refresh_token
