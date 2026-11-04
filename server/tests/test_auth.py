@@ -149,8 +149,7 @@ async def test_failed_logins_per_account_have_a_ceiling(
     assert r.status_code == 429
 
 
-def test_ipv6_clients_count_per_64() -> None:
-    settings = get_settings()
+def test_ipv6_clients_count_per_64(settings: Settings) -> None:
 
     def ip(host: str) -> str:
         scope: dict[str, object] = {"type": "http", "client": (host, 1), "headers": []}
