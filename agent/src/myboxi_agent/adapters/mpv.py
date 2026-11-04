@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import functools
 import itertools
 import json
 import logging
@@ -71,16 +72,23 @@ class MpvClient:
     def __init__(self, ipc: Path, on_event: Callable[[dict[str, Any]], None]) -> None:
         self.ipc = ipc
         self.on_event = on_event
-        self._queue: asyncio.Queue[dict[str, Any] | list[Any]] = asyncio.Queue()
+        # Commands that go first on every new connection (observers are per connection).
+        self.hello: Callable[[], list[list[Any]]] | None = None
+        self._queue: asyncio.Queue[tuple[dict[str, Any] | list[Any], Callable[[], None] | None]]
+        self._queue = asyncio.Queue()
         self._ids = itertools.count(1)
+        self._replies: dict[int, Callable[[], None]] = {}
         self.connected = asyncio.Event()
 
     def send(self, *command: Any) -> None:
-        self._queue.put_nowait(list(command))
+        self._queue.put_nowait((list(command), None))
 
-    def send_command(self, command: dict[str, Any] | list[Any]) -> None:
-        """A prepared command, e.g. with named arguments."""
-        self._queue.put_nowait(command)
+    def send_command(
+        self, command: dict[str, Any] | list[Any], on_reply: Callable[[], None] | None = None
+    ) -> None:
+        """A prepared command, e.g. with named arguments. ``on_reply`` runs once mpv
+        answered it: every event mpv sent before handling it has arrived by then."""
+        self._queue.put_nowait((command, on_reply))
 
     async def run(self) -> None:
         while True:
@@ -89,8 +97,11 @@ class MpvClient:
             except OSError:  # not there yet, refused, or a stale socket file
                 await asyncio.sleep(0.2)
                 continue
+            self._replies.clear()
             self.connected.set()
             try:
+                for command in self.hello() if self.hello is not None else []:
+                    self._write_one(writer, command, None)
                 async with asyncio.TaskGroup() as tg:
                     tg.create_task(self._write(writer))
                     tg.create_task(self._read(reader))
@@ -101,11 +112,22 @@ class MpvClient:
                 writer.close()
             await asyncio.sleep(0.5)
 
+    def _write_one(
+        self,
+        writer: asyncio.StreamWriter,
+        command: dict[str, Any] | list[Any],
+        on_reply: Callable[[], None] | None,
+    ) -> None:
+        request_id = next(self._ids)
+        if on_reply is not None:
+            self._replies[request_id] = on_reply
+        payload = {"command": command, "request_id": request_id}
+        writer.write(json.dumps(payload).encode() + b"\n")
+
     async def _write(self, writer: asyncio.StreamWriter) -> None:
         while True:
-            command = await self._queue.get()
-            payload = {"command": command, "request_id": next(self._ids)}
-            writer.write(json.dumps(payload).encode() + b"\n")
+            command, on_reply = await self._queue.get()
+            self._write_one(writer, command, on_reply)
             await writer.drain()
 
     async def _read(self, reader: asyncio.StreamReader) -> None:
@@ -118,13 +140,21 @@ class MpvClient:
             except ValueError:
                 continue
             if "event" in message:
-                try:
-                    self.on_event(message)
-                except Exception:
-                    # a failing callback must not cut the connection to mpv
-                    log.exception("mpv event handling failed", extra={"event": message["event"]})
-            elif message.get("error") not in (None, "success"):
+                self._call(functools.partial(self.on_event, message), message)
+                continue
+            if message.get("error") not in (None, "success"):
                 log.warning("mpv command failed", extra={"error": message.get("error")})
+            request_id = message.get("request_id")
+            on_reply = self._replies.pop(request_id, None) if isinstance(request_id, int) else None
+            if on_reply is not None:
+                self._call(on_reply)
+
+    def _call(self, callback: Callable[[], None], event: dict[str, Any] | None = None) -> None:
+        try:
+            callback()
+        except Exception:
+            # a failing callback must not cut the connection to mpv
+            log.exception("mpv callback failed", extra={"event": (event or {}).get("event")})
 
 
 class MpvProcess:
@@ -164,37 +194,52 @@ class MpvPlayer:
         self, client_factory: Callable[[Callable[[dict[str, Any]], None]], MpvClient]
     ) -> None:
         self.client = client_factory(self._on_event)
+        self.client.hello = self._hello
         self.on_playlist_finished: Callable[[], None] | None = None
         self.on_error: Callable[[str], None] | None = None
         self._pos_index = 0
         self._pos_s = 0.0
-        self._pending_start: float | None = None
+        self._volume: int | None = None
+        self._play_id = 0  # one per ``play``
+        self._ready_id = 0  # mpv handled the ``stop`` of this ``play``: its events are current
+        self._pending_start = False
         self._active = False  # expecting an end-of-playlist idle event
-        self._observed = False
 
-    def _observe(self) -> None:
-        if not self._observed:
-            self.client.send("observe_property", 1, "playlist-pos")
-            self.client.send("observe_property", 2, "time-pos")
-            self._observed = True
+    def _hello(self) -> list[list[Any]]:
+        """On every (re)connect: observers are per connection, and a restarted mpv starts
+        muted (``--volume=0``), so the last volume goes again (CLAUDE.md rule 6). Events
+        of the old connection are gone, so what follows is current."""
+        self._ready_id = self._play_id
+        hello: list[list[Any]] = [
+            ["observe_property", 1, "playlist-pos"],
+            ["observe_property", 2, "time-pos"],
+        ]
+        if self._volume is not None:
+            hello.append(["set_property", "volume", self._volume])
+        return hello
 
     def play(
         self, items: Sequence[PlanItem], index: int, position_ms: int, repeat: RepeatMode
     ) -> None:
-        self._observe()
         self._active = False
-        self.client.send("stop")
+        self._play_id += 1
+        play_id = self._play_id
+        self.client.send_command(["stop"], on_reply=lambda: self._ready(play_id))
         self.client.send("set_property", "loop-file", "inf" if repeat == "one" else "no")
         self.client.send("set_property", "loop-playlist", "inf" if repeat == "all" else "no")
-        self._pending_start = position_ms / 1000 if position_ms > 0 else None
-        if self._pending_start is not None:
-            self.client.send("set_property", "start", f"{self._pending_start:.3f}")
+        # Always set: a start left from an earlier figure must not apply to this one.
+        start = f"{position_ms / 1000:.3f}" if position_ms > 0 else "none"
+        self._pending_start = position_ms > 0
+        self.client.send("set_property", "start", start)
         for item in items:
             self.client.send_command(loadfile_command(item))
         self.client.send("set_property", "pause", False)
         self.client.send("playlist-play-index", index)
         self._pos_index, self._pos_s = index, position_ms / 1000
         self._active = True
+
+    def _ready(self, play_id: int) -> None:
+        self._ready_id = play_id
 
     def pause(self) -> None:
         self.client.send("set_property", "pause", True)
@@ -207,29 +252,31 @@ class MpvPlayer:
         self.client.send("stop")
 
     def set_volume(self, volume: int) -> None:
-        self.client.send("set_property", "volume", max(0, min(volume, 100)))
+        self._volume = max(0, min(volume, 100))
+        self.client.send("set_property", "volume", self._volume)
 
     def position(self) -> ResumePoint | None:
         return ResumePoint(self._pos_index, int(self._pos_s * 1000))
 
     def restarted(self) -> None:
         """mpv crashed and came back: the playlist is gone."""
-        self._observed = False
         if self._active and self.on_error is not None:
             self._active = False
             self.on_error("player_restart")
 
     def _on_event(self, event: dict[str, Any]) -> None:
         name = event.get("event")
+        if self._ready_id != self._play_id:
+            return  # a late event of the playlist before this ``play``
         if name == "property-change":
             data = event.get("data")
             if event.get("name") == "playlist-pos" and isinstance(data, int) and data >= 0:
                 self._pos_index = data
             elif event.get("name") == "time-pos" and isinstance(data, int | float):
                 self._pos_s = float(data)
-        elif name == "file-loaded" and self._pending_start is not None:
+        elif name == "file-loaded" and self._pending_start:
             # "start" applies to every file loaded afterwards; only the first one resumes.
-            self._pending_start = None
+            self._pending_start = False
             self.client.send("set_property", "start", "none")
         elif name == "end-file" and event.get("reason") == "error":
             if self.on_error is not None:
