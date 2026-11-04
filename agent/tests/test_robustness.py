@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import subprocess
 from collections.abc import AsyncIterator
@@ -19,7 +20,7 @@ from myboxi_agent.adapters import hardware
 from myboxi_agent.adapters.base import Placed, ReaderEvent
 from myboxi_agent.adapters.bundle import sim_adapters
 from myboxi_agent.adapters.hardware import SystemdSystem
-from myboxi_agent.adapters.mpv import MpvClient
+from myboxi_agent.adapters.mpv import MpvClient, MpvProcess
 from myboxi_agent.adapters.sim import SimAnnouncer
 from myboxi_agent.app import App, supervised
 from myboxi_agent.config import Settings
@@ -294,3 +295,38 @@ async def test_mqtt_link_survives_an_unexpected_error(monkeypatch: pytest.Monkey
     finally:
         task.cancel()
     assert not link.connected()
+
+
+def test_a_repeating_failure_is_logged_rarely(caplog: pytest.LogCaptureFixture) -> None:
+    """A tick that fails every second never writes a traceback a second to the SD card."""
+    now = [0.0]
+    failures = app_module.FailureLog("tick failed", now=lambda: now[0])
+    for _ in range(120):
+        try:
+            raise RuntimeError("database is locked")
+        except RuntimeError:
+            failures.failed()
+        now[0] += 1.0
+    records = [r for r in caplog.records if r.getMessage() == "tick failed"]
+    assert len(records) == 2  # the first one, then one after a minute
+    assert records[0].exc_info is not None
+    assert records[1].exc_info is None
+    assert records[1].__dict__["failures"] == 60
+
+
+async def test_a_failing_restart_callback_never_starts_a_second_mpv(tmp_path: Path) -> None:
+    """The callback writes to SQLite; if that fails, the new mpv is still the one watched."""
+    calls: list[int] = []
+
+    def on_restart() -> None:
+        calls.append(1)
+        raise RuntimeError("database is locked")
+
+    process = MpvProcess(["sh", "-c", "sleep 0.05"], tmp_path / "mpv.sock", on_restart)
+    task = asyncio.create_task(process.run())
+    await asyncio.sleep(1.3)  # first one ends, one second pause, the second one starts
+    assert not task.done()  # the error did not end run() (supervised() would start another)
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+    assert calls == [1]

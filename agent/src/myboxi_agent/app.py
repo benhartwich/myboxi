@@ -12,7 +12,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, get_args
 
 from myboxi_agent import __version__
-from myboxi_agent.adapters.base import Placed, ReaderEvent
+from myboxi_agent.adapters.base import ButtonEvent, Placed, ReaderEvent
 from myboxi_agent.adapters.bundle import Adapters, sim_adapters
 from myboxi_agent.adapters.loudness import MpvLoudness
 from myboxi_agent.adapters.mpv import KNOWN_PROMPTS
@@ -78,6 +78,7 @@ TICK_S = 0.1
 CONTROLLER_TICK_S = 1.0
 RESTART_S = 1.0
 RESTART_MAX_S = 60.0
+FAILURE_LOG_S = 60.0
 
 
 def build_adapters(settings: Settings) -> Adapters:
@@ -286,23 +287,28 @@ class App:
             self.controller.token_removed()
 
     async def _buttons_loop(self) -> None:
+        failures = FailureLog("button failed")
         async for event in self.adapters.buttons.events():
-            if event.pressed and self.setup_phase.active():
-                self.controller.button_seen(event.button)
-                self.sync.report_soon()
-            actions = (
-                self.tracker.press(event.button)
-                if event.pressed
-                else self.tracker.release(event.button)
-            )
-            for action in actions:
-                try:
-                    self.controller.button(action)
-                except Exception:
-                    log.exception("button failed", extra={"action": str(action)})
+            try:
+                self._button_event(event)
+            except Exception:
+                failures.failed()
+
+    def _button_event(self, event: ButtonEvent) -> None:
+        if event.pressed and self.setup_phase.active():
+            self.controller.button_seen(event.button)
+            self.sync.report_soon()
+        actions = (
+            self.tracker.press(event.button)
+            if event.pressed
+            else self.tracker.release(event.button)
+        )
+        for action in actions:
+            self.controller.button(action)
 
     async def _tick_loop(self) -> None:
         elapsed = 0.0
+        failures = FailureLog("tick failed")
         while True:
             await asyncio.sleep(TICK_S)
             try:
@@ -313,7 +319,7 @@ class App:
                     elapsed = 0.0
                     self.controller.tick()
             except Exception:
-                log.exception("tick failed")
+                failures.failed()
 
     # --- control socket ----------------------------------------------------------------------
 
@@ -521,6 +527,29 @@ def valid_soloist_key(key: object) -> bool:
 
 class _Stop(Exception):
     pass
+
+
+class FailureLog:
+    """Logs a failure that repeats every second (e.g. a broken database) without filling
+    the SD card: the first with its traceback, then at most once a minute with a count."""
+
+    def __init__(self, message: str, now: Callable[[], float] = time.monotonic) -> None:
+        self.message = message
+        self.now = now
+        self._since_log = 0
+        self._logged_at: float | None = None
+
+    def failed(self) -> None:
+        """Call from an ``except`` block."""
+        self._since_log += 1
+        now = self.now()
+        if self._logged_at is None:
+            log.exception(self.message)
+        elif now - self._logged_at >= FAILURE_LOG_S:
+            log.error(self.message, extra={"failures": self._since_log})
+        else:
+            return
+        self._logged_at, self._since_log = now, 0
 
 
 async def supervised(name: str, run: Callable[[], Awaitable[None]]) -> None:
