@@ -370,6 +370,7 @@ class Controller:
         self._apply_volume()
         self.announcer.announce(Prompt.TONE_START)
         self.player.play(s.items(), order.index(start.item_index), start.position_ms, plan.repeat)
+        self._start_used(plan)
         self.outbox.emit(
             "token_played", TokenPlayedData(token_id=plan.token_id, content_id=plan.content_id)
         )
@@ -391,9 +392,16 @@ class Controller:
         self._apply_volume(force=True)
         self.announcer.announce(Prompt.TONE_START)
         self.player.play_context(plan.items[0].source, start, plan.shuffle, plan.repeat)
+        self._start_used(plan)
         self.outbox.emit(
             "token_played", TokenPlayedData(token_id=plan.token_id, content_id=plan.content_id)
         )
+
+    def _start_used(self, plan: Playable) -> None:
+        """SPEC v0.11 §3.9: used once it played, not when only looked up or refused (e.g. in
+        a quiet-hour lock)."""
+        if plan.start is not None and plan.start_id is not None:
+            self.library.start_used(plan.token_id, plan.start_id)
 
     def _play_pause(self) -> None:
         if self.pairing_code:

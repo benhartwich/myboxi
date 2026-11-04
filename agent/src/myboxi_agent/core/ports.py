@@ -79,7 +79,13 @@ class ResumeStore(Protocol):
 
 
 class Library(Protocol):
-    def resolve(self, uid: str) -> Resolution: ...
+    def resolve(self, uid: str) -> Resolution:
+        """No side effects: resolving only to look (e.g. unknown or loading?) changes nothing."""
+        ...
+
+    def start_used(self, token_id: uuid.UUID, start_id: str) -> None:
+        """SPEC v0.11 §3.9: the start point played; the next placement resumes again."""
+        ...
 
 
 class System(Protocol):
