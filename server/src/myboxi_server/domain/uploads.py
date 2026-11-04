@@ -31,7 +31,8 @@ log = logging.getLogger(__name__)
 
 OPUS_MIME = "audio/ogg; codecs=opus"
 JPEG_MIME = "image/jpeg"
-AUDIO_EXTENSIONS = frozenset({".mp3", ".m4a", ".wav", ".ogg", ".oga", ".opus", ".flac"})
+# .webm: recordings from the browser (MediaRecorder in Chrome and Firefox)
+AUDIO_EXTENSIONS = frozenset({".mp3", ".m4a", ".wav", ".ogg", ".oga", ".opus", ".flac", ".webm"})
 IMAGE_EXTENSIONS = frozenset({".jpg", ".jpeg", ".png", ".webp"})
 CHUNK = 1024 * 1024
 

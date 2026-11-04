@@ -93,6 +93,15 @@ async def test_destructive_forms_ask_first(ui: Ui) -> None:
     assert "aus dem Haushalt entfernen?" in members.text or "/remove" not in members.text
 
 
+async def test_collections_can_be_recorded_in_the_browser(ui: Ui) -> None:
+    """Recording uses the upload path (speech profile); listening first needs blob: media."""
+    r = await ui.client.get(ui.url(f"/contents/{ui.lib.content_id}"))
+    assert 'id="recorder" hidden' in r.text
+    assert "/static/recorder.js?v=" in r.text
+    assert '<input type="hidden" name="profile" value="speech">' in r.text
+    assert "media-src 'self' blob:" in r.headers["content-security-policy"]
+
+
 # --- exactly one revision per write (acceptance criterion) -------------------------------
 
 Op = Callable[[Ui], Awaitable[httpx.Response]]
