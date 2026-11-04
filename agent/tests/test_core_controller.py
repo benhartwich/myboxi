@@ -375,6 +375,25 @@ def test_quiet_lock_prevents_and_stops_playback(box: Box) -> None:
     assert box.announcer.said[-1] == (Prompt.QUIET_TIME,)
 
 
+def test_volume_buttons_in_a_quiet_hour_lock_keep_the_wish(box: Box) -> None:
+    """SPEC §9.2: the lock's limit 0 never becomes the wanted volume for the morning."""
+    box.set_config(quiet_hours={"start": "19:00", "end": "07:00", "lock": True})
+    box.library.by_uid[UID] = playable()
+    box.ctl.token_placed(UID)
+    box.ctl.button(Action.VOLUME_UP)
+    box.ctl.button(Action.PLAY_PAUSE)  # paused in the evening
+    box.clock.set_wall(dt.datetime(2026, 9, 24, 21, 0, tzinfo=dt.UTC))  # 23:00 Vienna
+    box.ctl.button(Action.VOLUME_DOWN)
+    box.ctl.button(Action.VOLUME_UP)
+    box.ctl.external_volume(80)
+    assert box.ctl.requested_volume == 40
+    box.clock.set_wall(dt.datetime(2026, 9, 25, 6, 0, tzinfo=dt.UTC))  # 08:00 Vienna
+    box.ctl.button(Action.PLAY_PAUSE)
+    box.ctl.tick()
+    assert box.player.state == "playing"
+    assert box.player.volume == 40
+
+
 def test_untrusted_time_caps_volume_all_day(box: Box) -> None:
     box.set_config(quiet_hours={"start": "19:30", "end": "06:30", "max_volume": 20})
     box.clock.trusted = False

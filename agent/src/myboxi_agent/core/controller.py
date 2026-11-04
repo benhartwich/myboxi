@@ -262,7 +262,8 @@ class Controller:
         """The volume was changed outside the box (Spotify app): it goes through the one
         volume policy (SPEC §9.2, CLAUDE.md rule 4) and is set back if above the limit."""
         lim = volume.limits(self.config(), self.clock.now(), self.clock.time_trusted())
-        self.requested_volume = max(0, min(value, lim.ceiling, 100))
+        if not lim.locked:  # the lock's ceiling 0 is no wish for the morning
+            self.requested_volume = max(0, min(value, lim.ceiling, 100))
         self._apply_volume(force=True)
 
     def _stop_external(self) -> None:
@@ -347,6 +348,9 @@ class Controller:
 
     def _change_volume(self, delta: int) -> None:
         lim = volume.limits(self.config(), self.clock.now(), self.clock.time_trusted())
+        if lim.locked:
+            # SPEC §3.4: no playback at all; the wish stays for the next morning.
+            return
         # Never build up hidden headroom above the current ceiling.
         self.requested_volume = max(0, min(self.requested_volume + delta, lim.ceiling, 100))
         self._apply_volume()
