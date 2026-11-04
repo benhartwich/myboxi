@@ -218,12 +218,29 @@ systemctl restart myboxi-server-api.service myboxi-server-worker.service
 systemctl try-restart myboxi-server-mqtt.service
 ```
 
-**Backup:** Datenbank und Asset-Verzeichnis gehören zusammen. Die Assets sind content-adressiert und ändern sich nie, ein inkrementelles `rsync` genügt.
+**Backup:** Datenbank und Asset-Verzeichnis gehören zusammen. Die Assets sind content-adressiert und ändern sich nie, ein inkrementelles `rsync` genügt. Ein Timer sichert jede Nacht um 02:40, vor dem Aufräumen des Workers:
 
 ```text
-runuser -u postgres -- pg_dump --format=custom myboxi-server > /var/backups/myboxi-server.dump
-rsync -a /var/lib/myboxi-server/assets/ backup-host:/backups/myboxi-server/assets/
+install -m 0755 /opt/myboxi-server/deploy/backup/myboxi-server-backup /usr/local/sbin/
+install -m 0644 /opt/myboxi-server/deploy/systemd/myboxi-server-backup.service \
+  /opt/myboxi-server/deploy/systemd/myboxi-server-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now myboxi-server-backup.timer
+systemctl start myboxi-server-backup.service      # erster Lauf, prüfen mit journalctl -u myboxi-server-backup
 ```
+
+Das Skript legt datierte Dumps unter `/var/backups/myboxi-server/` ab (nur für root lesbar), prüft jeden Dump mit `pg_restore --list` und behält 14 Tage. Eine Kopie außer Haus ist dringend empfohlen: In `/etc/myboxi-server/backup.env` (Vorlage `deploy/backup/backup.env.example`) `MYBOXI_BACKUP_RSYNC_TARGET` setzen, dann gehen Dumps und Assets per `rsync` über SSH dorthin.
+
+**Wiederherstellen** (vorher die Dienste stoppen; die Assets zurück nach `/var/lib/myboxi-server/assets/`, Besitzer `myboxi-server`):
+
+```text
+systemctl stop myboxi-server-api.socket myboxi-server-api.service myboxi-server-worker.service myboxi-server-mqtt.service
+runuser -u postgres -- pg_restore --clean --if-exists --no-owner --role=myboxi-server \
+  --dbname=myboxi-server /var/backups/myboxi-server/myboxi-server-latest.dump
+systemctl start myboxi-server-api.socket myboxi-server-worker.service myboxi-server-mqtt.service
+```
+
+Eine Wiederherstellung einmal in eine leere Test-Datenbank zu proben, ist der einzige Beweis, dass das Backup taugt.
 
 **Aufräumen:** Der Worker löscht täglich um 03:17 Events älter als 30 Tage (SPEC §3.11), abgelaufene Sessions, Einladungen und Kopplungscodes sowie Audiodateien, auf die kein Inhalt mehr verweist.
 
