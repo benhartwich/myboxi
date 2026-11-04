@@ -72,7 +72,8 @@ class WifiAdder(Protocol):
 
 def _chown(path: Path, user: str) -> None:
     entry = pwd.getpwnam(user)
-    os.chown(path, entry.pw_uid, entry.pw_gid)
+    # never through a symlink someone put there (the agent owns the handover's directory)
+    os.chown(path, entry.pw_uid, entry.pw_gid, follow_symlinks=False)
 
 
 @dataclass
@@ -181,12 +182,14 @@ class Provisioner:
 def _write(path: Path, text: str, mode: int) -> None:
     """Atomically, with ``mode`` from the start (never readable by others in between)."""
     tmp = path.with_name(f".{path.name}.tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    # Root writes into directories others own (the handover): a new file, never a symlink.
+    tmp.unlink(missing_ok=True)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, mode)
     with os.fdopen(fd, "w", encoding="utf-8") as f:
+        os.fchmod(f.fileno(), mode)  # the umask may have taken bits
         f.write(text)
         f.flush()
         os.fsync(f.fileno())
-    tmp.chmod(mode)
     tmp.replace(path)
 
 

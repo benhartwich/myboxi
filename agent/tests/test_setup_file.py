@@ -224,3 +224,21 @@ def test_a_plain_http_server_from_a_handover_is_refused(app: App) -> None:
     assert app.state.get().server_url is None
     assert app.state.claim_token() is None
     assert read_handover(app.settings.provision_handover) is None  # gone
+
+
+def test_root_never_writes_through_a_symlink(tmp_path: Path) -> None:
+    """The agent owns the handover's directory: a planted symlink is replaced, the file it
+    points to stays as it is, and the mode holds whatever the umask."""
+    from myboxi_agent.setup.provision import _write  # pyright: ignore[reportPrivateUsage]
+
+    victim = tmp_path / "victim"
+    victim.write_text("keep")
+    target = tmp_path / "provision.json"
+    (tmp_path / ".provision.json.tmp").symlink_to(victim)
+    _write(target, "{}", 0o600)
+    assert victim.read_text() == "keep"
+    assert target.read_text() == "{}"
+    assert not target.is_symlink()
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    _write(target, "{}", 0o644)
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
