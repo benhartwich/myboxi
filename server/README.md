@@ -1,6 +1,6 @@
 # Myboxi-Server
 
-FastAPI-Server für Myboxi (SPEC v0.4): Mandanten, Nutzer, Bibliothek, Geräte-API.
+FastAPI-Server für Myboxi (SPEC `docs/SPEC.md`): Mandanten, Nutzer, Bibliothek, Geräte-API.
 Betrieb auf Debian 13: siehe `docs/betrieb-debian13.md`.
 
 ## Entwicklung
