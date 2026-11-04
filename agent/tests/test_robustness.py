@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import subprocess
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
@@ -13,6 +14,7 @@ import httpx
 import pytest
 
 import myboxi_agent.app as app_module
+from myboxi_agent import durable
 from myboxi_agent.adapters import hardware
 from myboxi_agent.adapters.base import Placed, ReaderEvent
 from myboxi_agent.adapters.bundle import sim_adapters
@@ -22,7 +24,7 @@ from myboxi_agent.adapters.sim import SimAnnouncer
 from myboxi_agent.app import App, supervised
 from myboxi_agent.config import Settings
 from myboxi_agent.core.model import Playable, Prompt
-from myboxi_agent.sync.client import ApiError, DeviceApi, Unreachable
+from myboxi_agent.sync.client import ApiError, ChecksumMismatch, DeviceApi, Unreachable
 from myboxi_protocol.state import StateResponse
 
 from .test_sync_engine import TENANT, FakeApi, run_until
@@ -179,3 +181,79 @@ async def test_systemctl_runs_off_the_event_loop() -> None:
     release.set()
     system.request_update()
     await asyncio.sleep(0.05)
+
+
+# --- asset downloads (SPEC §4.1) ---------------------------------------------------------
+
+ASSET = b"opus data" * 100
+ASSET_SHA = hashlib.sha256(ASSET).hexdigest()
+
+
+def asset_server(requests: list[httpx.Request], body: bytes = ASSET) -> DeviceApi:
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        first = request.headers.get("range", "bytes=0-").removeprefix("bytes=").split("-")[0]
+        if int(first) >= len(body):
+            return httpx.Response(416)
+        return httpx.Response(206 if int(first) else 200, content=body[int(first) :])
+
+    return api_answering(httpx.MockTransport(handler))
+
+
+async def test_a_complete_part_file_finishes_after_416(tmp_path: Path) -> None:
+    """Power lost after the last byte, before the rename: the Range request answers 416."""
+    requests: list[httpx.Request] = []
+    dest = tmp_path / "a.opus"
+    (tmp_path / "a.opus.part").write_bytes(ASSET)
+    api = asset_server(requests)
+    assert await api.download("jwt", ASSET_SHA, dest) == len(ASSET)
+    assert dest.read_bytes() == ASSET
+    assert requests[0].headers["range"] == f"bytes={len(ASSET)}-"
+
+
+async def test_a_complete_part_file_of_known_size_needs_no_request(tmp_path: Path) -> None:
+    requests: list[httpx.Request] = []
+    dest = tmp_path / "a.opus"
+    (tmp_path / "a.opus.part").write_bytes(ASSET)
+    assert await asset_server(requests).download("jwt", ASSET_SHA, dest, len(ASSET)) == len(ASSET)
+    assert requests == []
+
+
+async def test_a_wrong_part_file_starts_over(tmp_path: Path) -> None:
+    requests: list[httpx.Request] = []
+    dest = tmp_path / "a.opus"
+    part = tmp_path / "a.opus.part"
+    part.write_bytes(b"x" * (len(ASSET) + 5))
+    api = asset_server(requests)
+    with pytest.raises(ChecksumMismatch):
+        await api.download("jwt", ASSET_SHA, dest)  # 416, and not the asset
+    assert not part.exists()
+    assert await api.download("jwt", ASSET_SHA, dest) == len(ASSET)
+
+
+async def test_download_stops_at_the_expected_size(tmp_path: Path) -> None:
+    """A server never fills the disk: no more than ``content_item.bytes``."""
+    requests: list[httpx.Request] = []
+    dest = tmp_path / "a.opus"
+    api = asset_server(requests, body=ASSET * 50)
+    with pytest.raises(ChecksumMismatch):
+        await api.download("jwt", ASSET_SHA, dest, len(ASSET))
+    assert not (tmp_path / "a.opus.part").exists()
+    assert not dest.exists()
+
+
+async def test_downloaded_asset_is_on_disk_before_it_counts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CLAUDE.md rule 5: file and rename synced before the asset is registered."""
+    synced: list[str] = []
+    real_fsync = durable.os.fsync
+
+    def fsync(fd: int) -> None:
+        synced.append(Path(f"/proc/self/fd/{fd}").readlink().name)
+        real_fsync(fd)
+
+    monkeypatch.setattr(durable.os, "fsync", fsync)
+    dest = tmp_path / "a.opus"
+    await asset_server([]).download("jwt", ASSET_SHA, dest, len(ASSET))
+    assert synced == ["a.opus.part", tmp_path.name]

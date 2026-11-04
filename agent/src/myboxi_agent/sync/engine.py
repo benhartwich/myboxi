@@ -59,7 +59,9 @@ class Api(Protocol):
     async def events(self, token: str, envelopes: list[dict[str, Any]]) -> EventBatchResponse: ...
     async def reported(self, token: str, message: ReportedMessage) -> None: ...
     async def unpair(self, token: str) -> None: ...
-    async def download(self, token: str, sha256: str, dest: Any) -> int: ...
+    async def download(
+        self, token: str, sha256: str, dest: Any, size: int | None = None
+    ) -> int: ...
     async def aclose(self) -> None: ...
 
 
@@ -383,7 +385,9 @@ class SyncEngine:
             return False
         for sha in missing:
             try:
-                size = await api.download(await self._token(api), sha, self.assets.path(sha))
+                size = await api.download(
+                    await self._token(api), sha, self.assets.path(sha), missing[sha]
+                )
             except ChecksumMismatch:
                 self.outbox.emit(
                     "sync_error", SyncErrorData(stage="asset_download", code="sha_mismatch")
