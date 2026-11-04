@@ -109,8 +109,21 @@ jobs:
           gh release create "$GITHUB_REF_NAME" build/myboxi-*.img.xz build/myboxi-*.img.xz.sha256 \
             build/myboxi-agent-*-arm64.tar.xz build/myboxi-agent-*-arm64.tar.xz.sha256 \
             --title "Myboxi ${GITHUB_REF_NAME#box-v}" --notes-file build/notes.md $pre
+
+  # Signing runs apart from the build: the build job runs a lot of third-party code (apt,
+  # PyTorch, the TTS packages, the image build), and the update key must never be in reach
+  # of it. This job only downloads the published bundle, hashes it and signs the manifest.
+  # Protect the environment "update-signing" with required reviewers and keep the secret
+  # MYBOXI_UPDATE_KEY there (docs/updates.md).
+  sign:
+    needs: build
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: update-signing
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: update channel (signed manifest, SPEC v0.7 §11.1)
-        if: github.ref_type == 'tag'
         env:
           GH_TOKEN: ${{ github.token }}
           UPDATE_KEY: ${{ secrets.MYBOXI_UPDATE_KEY }}
@@ -118,6 +131,9 @@ jobs:
           version="${GITHUB_REF_NAME#box-v}"
           bundle="myboxi-agent-$version-arm64.tar.xz"
           url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$bundle"
+          mkdir -p build
+          gh release download "$GITHUB_REF_NAME" --dir build --pattern "$bundle" --pattern "$bundle.sha256"
+          (cd build && sha256sum -c "$bundle.sha256")
           python3 tools/release/make_manifest.py --version "$version" --bundle "build/$bundle" \
             --url "$url" --out build/manifest.json
           key="$(mktemp)"
