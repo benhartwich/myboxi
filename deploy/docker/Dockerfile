@@ -4,7 +4,7 @@
 # Build context: the repository root.
 FROM debian:trixie-slim
 
-ARG UV_VERSION=0.13.8
+ARG UV_VERSION=0.13.9
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
     UV_PYTHON_DOWNLOADS=never \
