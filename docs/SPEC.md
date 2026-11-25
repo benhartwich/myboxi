@@ -1,6 +1,6 @@
-# Myboxi — Spezifikation v0.15: Datenmodell & Geräteprotokoll
+# Myboxi — Spezifikation v0.16: Datenmodell & Geräteprotokoll
 
-Status: Entwurf · Stand: 2026-10-03 · Änderungen: §14
+Status: Entwurf · Stand: 2026-11-25 · Änderungen: §14
 Scope: Der Vertrag zwischen **Box-Agent** (Raspberry Pi) und **Server**.
 Nicht im Scope: Web-UI, Gehäuse, Image-Build, Rechtliches (eigene Dokumente).
 
@@ -13,7 +13,7 @@ Projektname: **Myboxi** (technisch `myboxi`). „Box“ bezeichnet in dieser Spe
 
 1. **Offline-first.** Die Box ist die Wahrheit für den *Betrieb*, der Server die Wahrheit für die *Konfiguration*. Eine Box, die nie wieder Netz sieht, spielt alles weiter, was lokal gebunden und gecacht ist.
 2. **Box ohne Server lauffähig.** Der Server ist optional. Meilenstein M0 funktioniert komplett ohne ihn.
-3. **Nichts Sensibles verlässt die Box.** Kein Mikrofon-Audio, keine Spotify-Soloist-Keys, keine Nutzungsprotokolle über das in §9 Definierte hinaus.
+3. **Nichts Sensibles verlässt die Box.** Kein Mikrofon-Audio, kein erkannter Sprachtext, keine Spotify-Soloist-Keys, keine Nutzungsprotokolle über das in §9 Definierte hinaus.
 4. **Spotify ist ein optionaler Provider**, kein Fundament. Kernprodukt = eigene Inhalte (Uploads, Aufnahmen, Podcasts).
 5. **Self-hostable.** Die Server-URL ist konfigurierbar; eine Box kann ohne Neuinstallation auf eine andere Instanz umziehen.
 6. **Versioniert.** Protokollversion steht im Topic-Pfad und in jeder Nachricht. Server unterstützt Version N und N-1.
@@ -90,6 +90,7 @@ Neue Mandanten: Jeder angemeldete Nutzer kann einen Mandanten („Haushalt“) a
 | providers_enabled | text[] | `["local","podcast","stream"]` | `spotify` nur wenn auf der Box eingerichtet |
 | auto_update | bool | `true` | Software-Updates selbst installieren (§11); `false`: nur herunterladen |
 | spotify_allow_explicit | bool | `false` | Spotify-Titel mit der Kennzeichnung `explicit` spielen (§8.1) |
+| voice | json | null | Sprachsteuerung (v0.16, §9.8): `{ "enabled": true, "during_quiet_hours": false }`; `null` = aus |
 
 ### 3.5 `token` (Figur)
 | Feld | Typ | Notiz |
@@ -392,6 +393,7 @@ Optionale Felder (fehlen sie, weiß der Server es nicht):
   | `audio` | `player_down` (Wiedergabeprozess läuft nicht), `no_output` (kein Audioausgang) |
   | `buttons` | `gpio_error` (Taster lassen sich nicht einrichten) |
   | `prompts` | `missing` (Ansagen fehlen) |
+  | `voice` | nur mit `voice.enabled` (§9.8): `no_mic` (kein Mikrofon, auch bei ausgeschaltetem Mikrofon-Schalter), `model_missing` (Sprachmodell fehlt) |
 - `button_test`: nur in der Einrichtungsphase (§9.6); die Namen der Tasten (§9.4), die seit Beginn der Phase gedrückt wurden.
 - `soloist`: nur wenn `spotify` in `providers_enabled` steht oder Soloist installiert ist (§8.1).
   - `state`: `no_key` (kein API-Key auf der Box), `installing`, `starting`, `ready` (WebSocket verbunden), `expired` (Build abgelaufen, noch kein neuer), `failed` (Download oder Start fehlgeschlagen).
@@ -411,7 +413,7 @@ Die Box schreibt Events zuerst in die `outbox` und löscht sie erst nach PUBACK.
 | `sync_error` | `stage`, `code` |
 | `resume_position` | `token_id`, `item_index`, `position_ms`, optional `item_key` (§3.10) |
 
-Mehr wird nicht gemeldet. Kein Protokoll über Hördauer oder Tageszeiten jenseits dieser Events.
+Mehr wird nicht gemeldet. Kein Protokoll über Hördauer oder Tageszeiten jenseits dieser Events. Sprachbefehle (§9.8) erzeugen kein eigenes Event; startet ein Befehl eine Figur, meldet die Box wie beim Auflegen `token_played`.
 Der Envelope-`type` ist der Event-Typ aus der Tabelle. `resume_position` aktualisiert serverseitig §3.10 nach Last-Writer-Wins über `ts`.
 
 `playback_error.code` ist ein Maschinencode; unbekannte Codes zeigt der Server neutral an. Bekannte Codes:
@@ -720,6 +722,44 @@ Ohne Einrichtungsdatei bleibt alles wie bisher: Einrichtungsmodus (§9.3) und an
 
 ---
 
+### 9.8 Sprachsteuerung (v2, v0.16)
+Optional, nur mit Mikrofon und `voice.enabled`. Die Box versteht einen kleinen, festen Satz deutscher Befehle nach einem Aktivierungswort. Erkennung und Verarbeitung laufen vollständig auf der Box (§1.3, §10).
+
+**Hardware**
+- Ein USB-Mikrofon-Array, Referenz: reSpeaker XMOS XVF3800 (4 Mikrofone, USB Audio). Es kann zugleich die Soundkarte der Box sein; dann rechnet es die eigene Wiedergabe aus dem Mikrofonsignal heraus (Echounterdrückung), und das Aktivierungswort wird auch bei laufender Wiedergabe erkannt.
+- Ein Schalter am Gehäuse trennt das Mikrofon elektrisch (USB-Versorgung). Die Box behandelt das wie ein fehlendes Mikrofon (`voice` `no_mic`, §6.4).
+- Ohne Mikrofon verhält sich die Box wie bisher.
+
+**Wann die Box zuhört**
+- Nur wenn alle Bedingungen gelten: `voice.enabled`, Mikrofon vorhanden, keine Ruhezeit (außer mit `voice.during_quiet_hours`), kein Setup-Modus (§9.3), keine Kopplung (§9.5).
+- Ruhezeiten werden wie in §5.6 nur bei `time_trusted` zugeordnet. Ohne verlässliche Zeit und mit `quiet_hours` hört die Box nicht zu (sichere Rückfallebene).
+
+**Ablauf**
+1. Die Box wartet auf das Aktivierungswort **„Hallo Boxi“**. Dafür hält sie höchstens die letzten 2 s Audio im Arbeitsspeicher.
+2. Erkannt: Die Wiedergabe wird auf höchstens 20 % der effektiven Lautstärke abgesenkt, ein Hinweiston zeigt „ich höre“.
+3. Die Box nimmt den Befehl auf, bis 1 s Stille folgt, höchstens 6 s.
+4. Sie erkennt den Befehl lokal und verwirft das Audio sofort.
+5. Bekannter Befehl: ausführen, quittieren (Ton oder kurze Ansage). Sonst Ansage „Das hab ich nicht verstanden“, danach die vorige Lautstärke. Ohne Befehl in 6 s: kurzer Ton, vorige Lautstärke.
+
+**Befehle**
+
+| Gesagt (Beispiele) | Wirkung |
+|---|---|
+| „Pause“, „Stopp“ | wie `play_pause` bei laufender Wiedergabe (§9.4) |
+| „Weiter“, „Spiel weiter“ | wie `play_pause` bei pausierter Wiedergabe |
+| „Lauter“, „Leiser“ | ±10 über die Lautstärke-Policy (§9.2) |
+| „Nächstes“, „Zurück“ | wie `next` kurz bzw. gehalten (§9.4) |
+| „Spiel *Name*“ | startet die Figur, deren `label` oder deren gebundener Inhalt (`content.title`) am besten passt, wie `play_token` (§6.2) |
+
+- „Spiel *Name*“ sucht nur unter Figuren mit Binding auf dieser Box. Passt nichts sicher genug, sagt die Box „Das kenn ich nicht“. Passen mehrere gleich gut, fragt sie nicht nach, sondern sagt ebenfalls „Das kenn ich nicht“.
+- Alle Befehle gehen durch dieselben Regeln wie Tasten und Kommandos: Lautstärke-Policy, Ruhezeiten, Sleep-Timer, `providers_enabled`.
+- Mit Ruhezeit-`lock` ist die Box ohnehin stumm; mit `voice.during_quiet_hours` lehnt sie „Spiel …“ dann mit dem Fehlerton ab.
+
+**Datenschutz**
+- Audio liegt nur im Arbeitsspeicher. Es wird nie gespeichert, geloggt, gemeldet oder gesendet; auch nicht der erkannte Text.
+- Logs enthalten höchstens, dass ein Befehl erkannt wurde und welcher (`pause`, `play_token` …), nie den Wortlaut oder den Namen der Figur.
+- Eltern schalten die Sprachsteuerung in der App ein; Standard ist aus.
+
 ## 10. Sicherheit & Datenschutz
 
 - TLS für HTTPS und MQTT, keine Ausnahmen.
@@ -731,7 +771,7 @@ Ohne Einrichtungsdatei bleibt alles wie bisher: Einrichtungsmodus (§9.3) und an
 - Das Passwort des Broker-Admins kennt nur der MQTT-Dienst des Servers (eigene Env-Datei), nicht Web-UI und Worker.
 - Einrichtungsdatei (§9.7): Sie liegt bis zum ersten Start unverschlüsselt auf der SD-Karte und wird danach gelöscht. Wer die Karte in der Hand hat, hat ohnehin die Box. Der Einmal-Schlüssel ist nur gehasht gespeichert, kurz gültig und einmal verwendbar. Weder WLAN-Passwort noch SSH-Schlüssel noch Einmal-Schlüssel erscheinen in Logs.
 - Ein eigenes CA-Zertifikat (§9.3, v0.13) gilt nur für die Verbindungen zum gewählten Server. Wer es erstellt hat, könnte sonst beliebige HTTPS-Verbindungen der Box fälschen, etwa den Soloist-Download.
-- v1 ohne Mikrofon. Kommt Sprache in v2, bleibt die Verarbeitung vollständig lokal; kein Audio zum Server.
+- v1 ohne Mikrofon. Sprachsteuerung (v2, §9.8) ist optional, standardmäßig aus und vollständig lokal: kein Audio und kein erkannter Text verlassen die Box, nichts davon wird gespeichert.
 - Events: nur die Liste in §6.5, 30 Tage Aufbewahrung.
 - `button_test` enthält nur Tastennamen, keine Zeitpunkte, und nur während der Einrichtungsphase (§9.6).
 - Software-Updates (§11) installiert nur ein eigener Root-Dienst auf der Box, nie der Agent selbst. Die Box vertraut ausschließlich signierten Manifesten (Ed25519, Schlüssel im Image) und installiert nie eine ältere oder gleiche Version.
@@ -772,6 +812,7 @@ Die Box aktualisiert den Agent (samt Ansagen) selbst, sobald sie online ist.
 | M3 | Podcast-Provider | ja |
 | M4 | Spotify-Provider inkl. Update-Job und Katalog-Wächter | nein |
 | M5 | Image-Build in CI (read-only Root, Setup-Modus) | – |
+| M6 | Sprachsteuerung (v2, §9.8): Aktivierungswort, Befehle, USB-Mikrofon-Array als Soundkarte | nein |
 
 Der Agent wird in M0 gegen einen **Mock-Server** entwickelt, der die Endpunkte aus §7 mit statischen Fixtures bedient. Damit können Agent und Server ab M1 parallel entstehen.
 
@@ -787,11 +828,21 @@ Der Agent wird in M0 gegen einen **Mock-Server** entwickelt, der die Endpunkte a
 - [ ] TTS offline für Ansagen: Piper mit deutscher Stimme, Speicherbedarf auf Zero 2 W prüfen.
 - [x] Tech-Stack festgelegt (siehe `CLAUDE.md`).
 - [x] Lizenz: Server AGPL-3.0-or-later, Agent GPL-3.0-or-later, `packages/protocol` Apache-2.0, Spezifikation und Doku CC BY 4.0 (siehe `REUSE.toml`).
+- [ ] Sprachsteuerung (§9.8): Spracherkennung und Aktivierungswort auswählen (lokal, freie Lizenz, deutsch); Speicherbedarf und Antwortzeit auf dem Pi 4 messen. Der Pi Zero 2 W gilt vorerst als zu klein.
+- [ ] Sprachsteuerung: Erkennung von Kinderstimmen (3–6 Jahre) und Fehlaktivierungen im Alltag prüfen, bevor die Schwellen festgelegt werden.
 - [ ] Rechtliche Einordnung Gehäuseverkauf (Produktsicherheit, Spielzeugrecht) — außerhalb dieser Spec. Anfragen für gedruckte Gehäuse sind umgesetzt, bleiben aber abgeschaltet, bis das geklärt ist (`docs/gehaeuse.md`).
 
 ---
 
 ## 14. Änderungen
+
+**v0.16 (2026-11-25)** — Sprachsteuerung (v2); Protokollversion bleibt `v1`, alle Änderungen additiv.
+- §1: Auch erkannter Sprachtext verlässt die Box nicht.
+- §3.4: `device_config.voice`.
+- §6.4: Health-Check `voice`.
+- §6.5: keine Events für Sprachbefehle.
+- §9.8: Aktivierungswort, Befehle, Hardware, Datenschutz.
+- §10, §12, §13: Datenschutz, Meilenstein M6, offene Punkte.
 
 **v0.15 (2026-10-03)** — Zurück-Funktion; keine Änderung am Protokoll oder am Datenmodell.
 - §9.4: `next` gehalten geht an den Titelanfang oder zum vorherigen Titel.
