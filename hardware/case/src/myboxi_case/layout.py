@@ -34,6 +34,8 @@ STANDOFF_R = 3.0
 SPEAKER_RIM = 3.0  # thickness of the speaker frame that the clamp ring presses
 SPEAKER_DEPTH = 22.0
 SOCKET_HOLE_DX = 12.0  # screw holes of the USB-C panel socket, from its centre (measure!)
+SOCKET_ROUND = 22.0  # hole for a round USB-C panel socket with an M22 thread; drill out if
+# the socket needs more (a smaller hole cannot be fixed)
 
 Action = Literal["play_pause", "volume_up", "volume_down", "next"]
 Symbol = Literal["play_pause", "plus", "minus", "next"]
@@ -83,6 +85,20 @@ class Layout:
     powerbank: tuple[float, float] | None  # corner (x, y) of the compartment
     character: Character | None = None  # ears or horn on top, a face on the front
     anchors: tuple[tuple[float, float], ...] = ()  # cable tie mounts on the base (x, y)
+    # Stereo radio: the second speaker (x, z on the front panel), the microphone board under
+    # the top (centre x, y), the round USB-C socket and the analog amplifier on the base.
+    speaker2: tuple[float, float] | None = None
+    mic: tuple[float, float] | None = None
+    socket_round: bool = False
+    line_amp: tuple[float, float] | None = None  # corner (x, y) of the amplifier's space
+
+    @property
+    def stereo(self) -> bool:
+        return self.speaker2 is not None
+
+    @property
+    def speakers(self) -> tuple[tuple[float, float], ...]:
+        return (self.speaker,) if self.speaker2 is None else (self.speaker, self.speaker2)
 
     @property
     def ears(self) -> bool:
@@ -202,7 +218,45 @@ def _radio(cfg: CaseConfig) -> Layout:
     )
 
 
+def _stereo(cfg: CaseConfig) -> Layout:
+    """Stereo radio with a microphone board (docs/gehaeuse.md): two 5 cm speakers in closed
+    chambers on the front, figure and microphones on top, the buttons in a row at the back.
+
+    Its parts are fixed (config.STEREO_PARTS): Pi 4, Visaton FRS 5 X, 24 mm buttons, the
+    reSpeaker XVF3800 (Ø 100 mm) as USB sound card, and an analog amplifier module.
+    """
+    w, d, h = 175.0, 175.0, 105.0
+    buttons = tuple(
+        Button(action, 30.0 + i * 115.0 / 3, 145.0, -20.0)
+        for i, action in enumerate(("volume_down", "volume_up", "play_pause", "next"))
+    )
+    return Layout(
+        form="stereo",
+        width=w,
+        depth=d,
+        height=h,
+        r_front=6.0,
+        r_back=14.0,
+        frame_top=12.0,
+        figure=(36.0, 45.0),
+        buttons=buttons,
+        speaker=(49.0, 42.0),
+        speaker2=(126.0, 42.0),
+        name_box=(24.0, 76.0, w - 24.0, 91.0),
+        board=BoardPlace(30.0, 100.0, 0),
+        amp=(0.0, 0.0),  # no I2S amplifier
+        socket=(140.0, 25.0),
+        powerbank=None,
+        anchors=((60.0, 92.0), (125.0, 108.0)),
+        mic=(114.0, 62.0),
+        socket_round=True,
+        line_amp=(120.0, 72.0),
+    )
+
+
 def layout_for(cfg: CaseConfig) -> Layout:
+    if cfg.form == "stereo":
+        return _stereo(cfg)
     if cfg.form == "radio":
         return _radio(cfg)
     return _cube(cfg)

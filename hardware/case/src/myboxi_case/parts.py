@@ -4,6 +4,7 @@
 - front: panel behind the window frame; printed face down, so any grille prints cleanly
 - base: bottom plate with the board standoffs; screwed into the corner columns
 - speaker_ring: clamps the speaker to the front panel
+- chamber_left, chamber_right (stereo radio): closed boxes behind the speakers that clamp them
 - ear (bear only), figure: base for a figure with a pocket for an NFC coin tag
 """
 
@@ -15,7 +16,20 @@ from dataclasses import dataclass, field
 from manifold3d import CrossSection, Manifold
 
 from myboxi_case import characters, faces, patterns, text
-from myboxi_case.components import AMP, BOARDS, PN532, board_footprint, board_holes
+from myboxi_case.components import (
+    AMP,
+    BOARDS,
+    FRS5X_FRAME_R,
+    FRS5X_LUG,
+    FRS5X_T,
+    MIC_GAP,
+    MIC_HOLES,
+    MIC_PCB,
+    MIC_R,
+    PN532,
+    board_footprint,
+    board_holes,
+)
 from myboxi_case.config import CaseConfig
 from myboxi_case.geom import (
     bounds,
@@ -46,6 +60,7 @@ from myboxi_case.layout import (
     RING_R,
     RING_W,
     SOCKET_HOLE_DX,
+    SOCKET_ROUND,
     SPEAKER_RIM,
     STANDOFF_H,
     STANDOFF_R,
@@ -141,7 +156,7 @@ def body(g: Geometry) -> Shape:
     ]
     pilot = g.pilot(PILOT_M3)
     columns = [cylinder_z(COLUMN_R, x, y, BASE, top + 0.01) for x, y in g.columns]
-    features = union([*rails, *columns, _pn532_frame(g, tol)]) ^ outer
+    features = union([*rails, *columns, _pn532_frame(g, tol), *_mic_frame(g)]) ^ outer
     shell = union([shell, features])
     shell -= union([cylinder_z(pilot, x, y, BASE - 1.0, BASE + 14.0) for x, y in g.columns])
 
@@ -169,16 +184,20 @@ def body(g: Geometry) -> Shape:
         hx, hy = horn_position(lay)
         holes.append(cylinder_z(1.7, hx, hy, top - 1.0, lay.height + 1.0))  # M3 from inside
     sx, sz = lay.socket
-    socket_hole = rounded_rect(sx - 6.5, sz - 3.5, sx + 6.5, sz + 3.5, 3.0)
-    screw_holes = [circle(1.6, sx + dx, sz) for dx in (-SOCKET_HOLE_DX, SOCKET_HOLE_DX)]
-    holes.append(
-        xz_slab(section_union([socket_hole, *screw_holes]), lay.depth - WALL - 1.0, lay.depth + 1.0)
-    )
+    if lay.socket_round:
+        socket = circle(SOCKET_ROUND / 2 + tol, sx, sz)
+    else:
+        socket_hole = rounded_rect(sx - 6.5, sz - 3.5, sx + 6.5, sz + 3.5, 3.0)
+        screw_holes = [circle(1.6, sx + dx, sz) for dx in (-SOCKET_HOLE_DX, SOCKET_HOLE_DX)]
+        socket = section_union([socket_hole, *screw_holes])
+    holes.append(xz_slab(socket, lay.depth - WALL - 1.0, lay.depth + 1.0))
     if g.cfg.board == "pi4":
+        vx = _vents_x(lay)
         vents = section_union(
-            [rounded_rect(sx + 20 + 6 * i, 20.0, sx + 23 + 6 * i, 40.0, 1.5) for i in range(5)]
+            [rounded_rect(vx + 6 * i, 20.0, vx + 3 + 6 * i, 40.0, 1.5) for i in range(5)]
         )
         holes.append(xz_slab(vents, lay.depth - WALL - 1.0, lay.depth + 1.0))
+    holes += _mic_holes(g)
     shell -= union(holes)
 
     # Engravings on the top face (on the print bed): figure spot and button symbols.
@@ -190,6 +209,81 @@ def body(g: Geometry) -> Shape:
     inlay = _engrave_top(g, marks_top) ^ outer
     panel = _fields(g, marks_top) ^ outer
     return Shape(shell - inlay - panel, inlay, panel)
+
+
+def _vents_x(lay: Layout) -> float:
+    """Left edge of the Pi 4's vents in the back wall: beside the socket, or behind the Pi."""
+    return 50.0 if lay.stereo else lay.socket[0] + 20.0
+
+
+def _mic_points(lay: Layout) -> list[tuple[float, float]]:
+    if lay.mic is None:
+        return []
+    mx, my = lay.mic
+    return [(mx + dx, my + dy) for dx, dy in MIC_HOLES]
+
+
+def _mic_holes(g: Geometry) -> list[Manifold]:
+    """Sound holes over each microphone: a small cluster, so a few millimetres of offset on the
+    real board do not matter."""
+    top = g.lay.height - TOP
+    holes: list[Manifold] = []
+    for x, y in _mic_points(g.lay):
+        spots = [(x, y)] + [
+            (x + 2.8 * math.cos(math.radians(a)), y + 2.8 * math.sin(math.radians(a)))
+            for a in range(0, 360, 60)
+        ]
+        holes += [cylinder_z(0.8, px, py, top - 1.0, g.lay.height + 1.0) for px, py in spots]
+    return holes
+
+
+MIC_POSTS = (30.0, 150.0, 270.0)  # degrees; clear of the microphones (45° + n·90°) and ports
+
+
+def _radial_hull(
+    cx: float, cy: float, u: tuple[float, float], radii: list[tuple[float, float]],
+    side: tuple[float, float], z0: float, z1: float,
+) -> Manifold:  # fmt: skip
+    """Hull of thin rods at the given radii along direction ``u`` from (cx, cy), offset
+    tangentially by ``side``, from z0 to z1."""
+    ux, uy = u
+    rods = [
+        cylinder_z(0.01, cx + ux * r - uy * s, cy + uy * r + ux * s, z0, z1)
+        for pair in radii
+        for r in pair
+        for s in side
+    ]
+    return Manifold.batch_hull(rods)
+
+
+def _mic_frame(g: Geometry) -> list[Manifold]:
+    """Three posts with snap lips that hold the microphone board under the top, and spacer pads
+    that keep it MIC_GAP below the top plate. Lips as in _pn532_frame: 45° wedges."""
+    lay, tol = g.lay, g.tol
+    if lay.mic is None:
+        return []
+    mx, my = lay.mic
+    top = lay.height - TOP
+    board_bottom = top - MIC_GAP - MIC_PCB - tol
+    t, half, lip = 2.0, 4.0, 1.2
+    out: list[Manifold] = []
+    for a in MIC_POSTS:
+        u = (math.cos(math.radians(a)), math.sin(math.radians(a)))
+        r0 = MIC_R + tol
+        post = _radial_hull(
+            mx, my, u, [(r0, r0 + t)], (-half, half), board_bottom - lip - 1.2, top + 0.01
+        )
+        flat = _radial_hull(
+            mx, my, u, [(r0 - lip, r0)], (-half, half), board_bottom - 0.01, board_bottom
+        )
+        edge = _radial_hull(
+            mx, my, u, [(r0, r0)], (-half, half), board_bottom - lip, board_bottom - lip + 0.01
+        )
+        pad = _radial_hull(
+            mx, my, u, [(r0 - 4.0, r0 - 1.0)], (-2.0, 2.0), top - MIC_GAP, top + 0.01
+        )
+        out += [post, Manifold.batch_hull([flat, edge]), pad]
+    return out
 
 
 def _rounded_field(x0: float, y0: float, x1: float, y1: float) -> CrossSection:
@@ -213,6 +307,7 @@ def _fields(g: Geometry, marks_top: CrossSection) -> Manifold:
     if lay.character == "unicorn":
         hx, hy = horn_position(lay)
         keep.append(circle(HORN_R + 1.0, hx, hy))
+    keep += [circle(6.0, x, y) for x, y in _mic_points(lay)]
     top_field = g.outline.offset(-FRAME - FIELD_R).offset(FIELD_R) - section_union(keep)
     fields = [_engrave_top(g, top_field)]
 
@@ -221,10 +316,14 @@ def _fields(g: Geometry, marks_top: CrossSection) -> Manifold:
     fields.append(yz_slab(side, -0.01, ENGRAVE))
     fields.append(yz_slab(side, lay.width - ENGRAVE, lay.width + 0.01))
     sx, sz = lay.socket
-    back_keep = [rounded_rect(sx - 10.0, sz - 6.0, sx + 10.0, sz + 6.0, 3.0)]
-    back_keep += [circle(3.6, sx + dx, sz) for dx in (-SOCKET_HOLE_DX, SOCKET_HOLE_DX)]
+    if lay.socket_round:
+        back_keep = [circle(SOCKET_ROUND / 2 + 5.0, sx, sz)]
+    else:
+        back_keep = [rounded_rect(sx - 10.0, sz - 6.0, sx + 10.0, sz + 6.0, 3.0)]
+        back_keep += [circle(3.6, sx + dx, sz) for dx in (-SOCKET_HOLE_DX, SOCKET_HOLE_DX)]
     if g.cfg.board == "pi4":
-        back_keep.append(rect(sx + 18.0, 18.0, sx + 51.0, 42.0))
+        vx = _vents_x(lay)
+        back_keep.append(rect(vx - 2.0, 18.0, vx + 31.0, 42.0))
     back = _rounded_field(max(lay.r_back, FRAME), z0, lay.width - max(lay.r_back, FRAME), z1)
     fields.append(xz_slab(back - section_union(back_keep), lay.depth - ENGRAVE, lay.depth + 0.01))
     return union(fields)
@@ -272,6 +371,8 @@ def _pn532_frame(g: Geometry, tol: float) -> Manifold:
 
 
 def front(g: Geometry) -> Shape:
+    if g.lay.stereo:
+        return _front_stereo(g)
     lay, cfg = g.lay, g.cfg
     px0, px1 = lay.panel_x
     z0, z1 = g.panel_z
@@ -397,6 +498,97 @@ def snout(g: Geometry) -> Shape:
     return Shape(place(face.snout), place(face.details))
 
 
+CHAMBER_R = 35.0  # inside, clear of the speaker's lugs (34 mm)
+CHAMBER_WALL = 2.4
+CHAMBER_LEN = 40.0  # cylinder behind the panel, then a cone that prints without supports
+CHAMBER_BOSS_R = 41.0  # screw bosses around each speaker, at 45° between the lugs
+CHAMBER_BOSS_H = 6.0
+GRILLE_R = 21.0  # sound openings: inside the 46 mm cutout
+
+
+def chamber_bosses(sx: float, sz: float) -> list[tuple[float, float]]:
+    return [
+        (
+            sx + CHAMBER_BOSS_R * math.cos(math.radians(a)),
+            sz + CHAMBER_BOSS_R * math.sin(math.radians(a)),
+        )
+        for a in (45, 135, 225, 315)
+    ]
+
+
+def _front_stereo(g: Geometry) -> Shape:
+    """Front of the stereo radio: two grilles with a disc each, the name above them. Behind
+    each speaker a centring ring (open at the lugs) and four bosses for its chamber."""
+    lay, cfg, tol = g.lay, g.cfg, g.tol
+    px0, px1 = lay.panel_x
+    z0, z1 = g.panel_z
+    panel = xz_slab(rect(px0 + tol, z0, px1 - tol, z1), WALL, g.panel_back)
+    back = g.panel_back
+    openings = patterns.grille(cfg.grille, GRILLE_R)
+    disc_r = 30.0
+    dimples = _dimples(patterns.grille(cfg.grille, disc_r - 2.0), openings)
+    parts: list[Manifold] = [panel]
+    cuts: list[Manifold] = []
+    marks: list[CrossSection] = []
+    pilot = g.pilot(PILOT_M25)
+    lug_gap = rect(-FRS5X_LUG[0] / 2 - 1.0, -FRS5X_LUG[1] / 2 - 0.5, FRS5X_LUG[0] / 2 + 1.0,
+                   FRS5X_LUG[1] / 2 + 0.5)  # fmt: skip
+    for sx, sz in lay.speakers:
+        cuts.append(xz_slab(openings.translate((sx, sz)), WALL - 1.0, back + 1.0))
+        if not dimples.is_empty():
+            cuts.append(xz_slab(dimples.translate((sx, sz)), WALL - 0.01, WALL + DIMPLE))
+        ring = circle(FRS5X_FRAME_R + 0.3 + 1.6) - circle(FRS5X_FRAME_R + 0.3) - lug_gap
+        parts.append(xz_slab(ring.translate((sx, sz)), back - 0.01, back + FRS5X_T - 0.3))
+        for x, z in chamber_bosses(sx, sz):
+            parts.append(cylinder_y(3.0, x, z, back - 0.01, back + CHAMBER_BOSS_H))
+            cuts.append(cylinder_y(pilot, x, z, back - 1.0, back + CHAMBER_BOSS_H + 0.1))
+        marks.append((circle(disc_r) - dimples - openings).translate((sx, sz)))
+    solid = union(parts) - union(cuts)
+    nx0, nz0, nx1, nz1 = lay.name_box
+    if cfg.name:
+        label = text.fitted(cfg.name, nx1 - nx0, (nz1 - nz0) * 0.8, 5.0)
+        _, by0, _, by1 = bounds(label)
+        marks.append(label.translate(((nx0 + nx1) / 2, (nz0 + nz1) / 2 - (by0 + by1) / 2)))
+    inlay = _engrave_front(section_union(marks))
+    return Shape(solid - inlay, inlay)
+
+
+def chamber(g: Geometry, index: int) -> Shape:
+    """Closed box behind one speaker (about 0.2 l): it clamps the speaker's lugs against the
+    front and is screwed to its bosses. A cylinder and a cone, printed open side down."""
+    sx, sz = g.lay.speakers[index]
+    y0 = g.panel_back  # on the panel's back, around the speaker
+    r_in, r_out = CHAMBER_R, CHAMBER_R + CHAMBER_WALL
+    cone = r_out * 1.2  # steeper than 45°: the inside prints without supports
+    y1 = y0 + CHAMBER_LEN
+
+    def disc(r: float, ya: float, yb: float) -> Manifold:
+        return cylinder_y(r, sx, sz, ya, yb)
+
+    outer = Manifold.batch_hull([disc(r_out, y0, y1), disc(0.6, y1 + cone - 0.6, y1 + cone)])
+    tip = y1 + cone - CHAMBER_WALL * 1.6
+    inner = Manifold.batch_hull([disc(r_in, y0 - 1.0, y1), disc(0.01, tip - 0.01, tip)])
+    solid = outer - inner
+    # Ribs that press the lugs flat; the frame sits in the centring ring on the panel.
+    rib_y0 = y0 + FRS5X_T
+    for side in (-1, 1):
+        xa, xb = sorted((sx + side * (FRS5X_FRAME_R + 1.5), sx + side * (r_in + 0.5)))
+        solid += box(xa, rib_y0, sz - 4.0, xb, y0 + 12.0, sz + 4.0)
+    # Lugs for the screws, above the bosses on the panel.
+    ly0 = y0 + CHAMBER_BOSS_H + 0.2
+    holes: list[Manifold] = []
+    for x, z in chamber_bosses(sx, sz):
+        mid = ((x + sx) / 2, (z + sz) / 2)
+        lug = Manifold.batch_hull(
+            [cylinder_y(3.5, x, z, ly0, ly0 + 3.0), cylinder_y(3.5, *mid, ly0, ly0 + 3.0)]
+        )
+        solid += lug - disc(r_in, y0 - 1.0, y1)
+        holes.append(cylinder_y(1.45, x, z, ly0 - 1.0, ly0 + 4.0))
+    # The speaker cable leaves at the bottom; seal the hole with hot glue or putty.
+    holes.append(box(sx - 2.0, y0 + 18.0, sz - r_out - 1.0, sx + 2.0, y0 + 22.0, sz - r_in + 1.0))
+    return Shape(solid - union(holes), Manifold())
+
+
 def speaker_bosses(lay: Layout, diameter: float) -> list[tuple[float, float]]:
     sx, sz = lay.speaker
     rr = diameter / 2 + 4.0
@@ -432,16 +624,19 @@ def base(g: Geometry) -> Shape:
     for hx, hy in board_holes(lay.board, spec):
         parts.append(cylinder_z(STANDOFF_R, hx, hy, BASE - 0.01, BASE + STANDOFF_H))
         cuts.append(cylinder_z(pilot, hx, hy, BASE - 1.0, BASE + STANDOFF_H + 1.0))
-    # Amplifier holder: groove plus two posts with slots; the board slides in from above and
-    # sits tight (no glue).
-    ax, ay = lay.amp
-    aw = AMP[0] / 2
-    parts.append(box(ax - aw - 3.0, ay - 3.0, BASE - 0.01, ax + aw + 3.0, ay + 3.0, BASE + 3.0))
-    for side in (-1, 1):
-        inner, outer = sorted((ax + side * (aw - 1.5), ax + side * (aw + 3.0)))
-        parts.append(box(inner, ay - 3.0, BASE - 0.01, outer, ay + 3.0, BASE + 14.0))
-    slot = 0.8 + tol / 2
-    cuts.append(box(ax - aw - tol, ay - slot, BASE + 1.0, ax + aw + tol, ay + slot, BASE + 14.1))
+    if not lay.stereo:
+        # Amplifier holder: groove plus two posts with slots; the board slides in from above
+        # and sits tight (no glue).
+        ax, ay = lay.amp
+        aw = AMP[0] / 2
+        parts.append(box(ax - aw - 3.0, ay - 3.0, BASE - 0.01, ax + aw + 3.0, ay + 3.0, BASE + 3.0))
+        for side in (-1, 1):
+            inner, outer = sorted((ax + side * (aw - 1.5), ax + side * (aw + 3.0)))
+            parts.append(box(inner, ay - 3.0, BASE - 0.01, outer, ay + 3.0, BASE + 14.0))
+        slot = 0.8 + tol / 2
+        cuts.append(
+            box(ax - aw - tol, ay - slot, BASE + 1.0, ax + aw + tol, ay + slot, BASE + 14.1)
+        )
     for x, y in lay.anchors:
         parts.append(_tie_anchor(x, y))
     if lay.powerbank is not None:

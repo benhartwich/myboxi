@@ -258,6 +258,7 @@ FORM_LABELS: dict[str, str] = {
     "cat": "Katze",
     "bunny": "Hase",
     "frog": "Frosch",
+    "stereo": "Stereo-Radio",
 }
 
 
@@ -430,13 +431,17 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
             "  sind gesetzt; Filamente bei Bedarf an die eingelegten anpassen (PETG empfohlen).",
             "  Die 3MF-Dateien ordnen die Teile den Köpfen zu:",
             f"    Kopf 1: {labels['body']}, {labels['base']} – {colour('body')}",
-            f"    Kopf 2: {labels['front']}, {labels['speaker_ring']}, Felder am Korpus – "
+            f"    Kopf 2: {labels['front']}"
+            + (f", {labels['speaker_ring']}" if "speaker_ring" in labels else "")
+            + ", Felder am Korpus – "
             + colour("front"),
             "    Kopf 3: Einlagen (Name, Symbole, Figurenring) und Figurensockel – "
             + colour("accent"),
             *([f"    Kopf 4: {labels['snout']} – {colour('muzzle')}"] if "snout" in labels else []),
             "  Ohne Mehrfarbdrucker: Einlagen-Teile löschen, die Gravur bleibt sichtbar.",
         ]
+    if model.layout.stereo:
+        return "\n".join(lines + _stereo_readme(model)) + "\n"
     lines += [
         "",
         "STÜCKLISTE",
@@ -495,6 +500,60 @@ def _readme(model: CaseModel, files: list[str], url: str | None) -> str:
         f"Generator {GENERATOR_VERSION} · Konfiguration {cfg.digest()[:12]}",
     ]
     return "\n".join(lines) + "\n"
+
+
+def _stereo_readme(model: CaseModel) -> list[str]:
+    cfg = model.config
+    return [
+        "",
+        "STÜCKLISTE",
+        f"  {BOM['pi4']}",
+        "  NFC-Modul PN532 V3 (I2C), NFC-Tags NTAG213/215",
+        "  2 Lautsprecher Visaton FRS 5 X (8 Ohm)",
+        "  Mikrofon-Platine reSpeaker XVF3800 (USB, Ø 100 mm) als Soundkarte",
+        "  Analoger Stereo-Verstärker PAM8403 als Modul mit Klinkenbuchse, Schraubklemmen und",
+        "  USB-Stromanschluss (Platz bis 45 x 26 x 22 mm)",
+        "  Abgewinkeltes USB-C-Kabel (Mikrofon zum Pi) und abgewinkeltes Klinkenkabel",
+        "  4 Arcade-Taster 24 mm (mit fertig gecrimpten Kabeln)",
+        "  USB-C-Einbaubuchse rund (Gewinde M22) mit Kabel zum Pi",
+        "  4 Schrauben M3 x 10 (Boden), 8 Schrauben M2,5 x 8 (Lautsprecherkammern),",
+        "  4 Schrauben M2,5 x 6 (Pi)"
+        + ("; Gewindeeinsätze M3 und M2,5" if cfg.fastening == "insert" else ", selbstschneidend"),
+        "  Etwas Füllwatte für die Lautsprecherkammern, Heißkleber oder Knete",
+        "",
+        "ZUSAMMENBAU",
+        "  1. Lautsprecher von hinten in die Ringe der Front legen, die Laschen waagrecht.",
+        "     Kabel anschließen und durch das Loch unten in der Kammer führen. Kammer mit",
+        "     einer Handvoll Füllwatte (locker) aufsetzen und mit je 4 Schrauben M2,5",
+        "     festschrauben; sie drückt den Lautsprecher an. Kabelloch mit Heißkleber oder",
+        "     Knete abdichten.",
+        "  2. NFC-Modul von unten in den Rahmen unter der Figurenmarke drücken (rastet ein).",
+        "  3. Mikrofon-Platine mit der Logo-Seite nach oben und den Buchsen nach hinten",
+        "     zwischen die drei Haken unter der Oberseite drücken (rastet ein). Die",
+        "     Mikrofone liegen dann unter den vier Lochgruppen.",
+        "  4. Taster oben einsetzen und verschrauben, USB-C-Buchse hinten einschrauben.",
+        "     Passt das Gewinde nicht durch das Loch (22 mm), mit einem Stufenbohrer",
+        "     aufbohren.",
+        "  5. Pi auf den Boden schrauben, den Verstärker mit Kabelbindern oder",
+        "     doppelseitigem Klebeband auf die Fläche vorn rechts setzen.",
+        "  6. Verkabeln (https://github.com/benhartwich/myboxi/blob/main/docs/hardware.md):",
+        "     Mikrofon per USB an den Pi, Klinke vom Mikrofon zum Verstärker, Verstärker per",
+        "     USB mit Strom versorgen, Lautsprecher an die Schraubklemmen. Kabel mit kleinen",
+        "     Kabelbindern an den Haltern bündeln.",
+        "  7. Front samt Kammern von unten in die Schienen hinter dem Fenster schieben.",
+        "  8. Boden einsetzen und mit 4 Schrauben M3 festschrauben.",
+        "",
+        "Maße vor dem Druck mit den eigenen Teilen vergleichen (Anleitung und Maße:",
+        "https://github.com/benhartwich/myboxi/blob/main/docs/gehaeuse.md).",
+        "",
+        "LIZENZ",
+        "  Druckdateien: CC BY-SA 4.0 (Namensnennung: Myboxi, myboxi.eu).",
+        "  Generator: GPL-3.0-or-later, https://github.com/benhartwich/myboxi",
+        f"  Die Druckeinstellungen in {U1_FOLDER}/ stammen aus den Profilen von Snapmaker Orca",
+        "  (AGPL-3.0).",
+        "",
+        f"Generator {GENERATOR_VERSION} · Konfiguration {cfg.digest()[:12]}",
+    ]
 
 
 def bundle_zip(model: CaseModel, url: str | None = None) -> bytes:

@@ -28,7 +28,7 @@ COUNTRIES = {"AT": "Österreich", "DE": "Deutschland", "CH": "Schweiz", "LI": "L
 
 FORM_LABELS = {
     "radio": "Radio", "cube": "Würfel", "bear": "Bär", "unicorn": "Einhorn",
-    "cat": "Katze", "bunny": "Hase", "frog": "Frosch",
+    "cat": "Katze", "bunny": "Hase", "frog": "Frosch", "stereo": "Stereo-Radio",
 }  # fmt: skip
 BOARD_LABELS = {"zero2w": "Raspberry Pi Zero 2 W", "pi4": "Raspberry Pi 4"}
 POWER_LABELS = {"usbc": "USB-C-Buchse", "powerbank": "Powerbank im Gehäuse"}

@@ -29,6 +29,7 @@ LAYOUTS = [
     ("radio", "zero2w", "usbc"),
     ("radio", "zero2w", "powerbank"),
     ("radio", "pi4", "usbc"),
+    ("stereo", "pi4", "usbc"),
     ("cube", "zero2w", "usbc"),
     ("cube", "pi4", "usbc"),
     ("bear", "zero2w", "usbc"),
@@ -135,6 +136,23 @@ def test_parts_are_single_watertight_bodies() -> None:
         assert bbox(solid)[2] == pytest.approx(0.0, abs=1e-6)
     front = model.piece("front")
     assert not front.inlay.is_empty()  # name and eyes as a second colour
+
+
+def test_stereo_radio_has_its_fixed_parts() -> None:
+    """Two speakers in closed chambers, the microphone board under its sound holes, a round
+    USB-C socket; the parts it is built around are set whatever was chosen."""
+    cfg = CaseConfig.from_query({"form": "stereo", "board": "zero2w", "button": "16"})
+    assert (cfg.board, cfg.button, cfg.speaker, cfg.power) == ("pi4", 24, 50, "usbc")
+    model = build(cfg)
+    keys = [p.key for p in model.pieces]
+    assert keys == ["body", "front", "base", "chamber_left", "chamber_right", "figure"]
+    comps = {c.key for c in model.components}
+    assert {"speaker_left", "speaker_right", "mic", "line_amp", "socket"} <= comps
+    assert "amp" not in comps
+    for side in ("left", "right"):
+        chamber = model.piece(f"chamber_{side}").solid
+        assert chamber.volume() > 20_000.0  # a closed shell, not just a ring
+    assert check(model) == []
 
 
 def test_unicorn_has_a_horn_in_the_accent_colour() -> None:

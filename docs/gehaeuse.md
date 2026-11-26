@@ -1,7 +1,7 @@
 # Gehäuse: Box gestalten, drucken, anfragen
 
 Das Gehäuse der Myboxi kommt aus dem 3D-Drucker. Unter **app.myboxi.eu/gestalten** wählt man:
-- eine Form: Radio, Würfel, Bär, Einhorn, Katze, Hase, Frosch
+- eine Form: Radio, Würfel, Bär, Einhorn, Katze, Hase, Frosch, Stereo-Radio
 - einen Namen und drei Farben
 - das Lautsprechergitter
 
@@ -25,6 +25,7 @@ Lizenzen:
 | Front | Sichtseite auf dem Bett | Lautsprechergitter, Name, bei Tierfiguren das Gesicht |
 | Boden | liegend | Abstandshalter für den Pi, Halter für den Verstärker, zwei Kabelbinder-Halter, bei Bedarf Powerbank-Fach mit Schlitzen für ein Klettband |
 | Lautsprecherring | liegend | klemmt den Lautsprecher an die Front |
+| Lautsprecherkammern | offene Seite auf dem Bett | nur Stereo-Radio: geschlossene Kammer hinter jedem Lautsprecher, drückt ihn an die Front |
 | Ohren, Augen, Horn | liegend, Horn stehend | nur bei Tierfiguren |
 | Schnauze | auf dem flachen Rücken | nur bei Tierfiguren: plastisch, mit Nase, Mund und Tonlöchern; wird in die Vertiefung der Front geklebt |
 | Figurensockel | liegend | Druckpause bei 2,2 mm, NFC-Tag einlegen |
@@ -81,6 +82,24 @@ Die ZIP-Datei enthält eine `LIESMICH.txt` mit Stückliste und Montage.
 | NFC-Tags | NTAG213 oder NTAG215, 25 mm, für die Figurensockel |
 
 Verkabelung: `docs/hardware.md`.
+
+## Stereo-Radio
+
+Für Stereoklang und später Sprachsteuerung (SPEC §9.8, noch nicht freigegeben). 175 × 175 × 105 mm, nur mit Pi 4. Die Teile sind fest vorgegeben; andere Angaben zu Pi, Lautsprecher und Tastern im Konfigurator gelten hier nicht.
+
+| Teil | Hinweis |
+|---|---|
+| Raspberry Pi 4 | auf dem Boden hinten |
+| 2 × Visaton FRS 5 X (8 Ω) | Rahmen Ø 52,5 mm, Laschen 68 mm, 33,5 mm tief; Ausschnitt 46 mm (Datenblatt) |
+| Mikrofon-Platine reSpeaker XVF3800 (USB) | Ø 100 mm, unter der Oberseite rechts, Mikrofone unter vier Lochgruppen; zugleich die Soundkarte |
+| Analoger Stereo-Verstärker (PAM8403-Modul mit Klinke, Schraubklemmen, USB-Strom) | Platz bis 45 × 26 × 22 mm vorn rechts auf dem Boden |
+| 4 Arcade-Taster 24 mm | in einer Reihe hinten auf der Oberseite |
+| USB-C-Einbaubuchse rund, Gewinde M22 | Loch 22 mm; bei Bedarf mit dem Stufenbohrer aufbohren |
+| Abgewinkeltes USB-C-Kabel und abgewinkeltes Klinkenkabel | Die Buchsen der Mikrofon-Platine zeigen nach hinten zu den Tastern; gerade Stecker passen nicht |
+
+- **Klang:** Hinter jedem Lautsprecher sitzt eine geschlossene Kammer (Zylinder und Kegel, etwa 0,2 l), locker mit Füllwatte gefüllt. Sie drückt die Laschen des Lautsprechers an die Front und wird mit 4 Schrauben M2,5 × 8 an Domen auf der Front festgeschraubt. Das Kabel läuft durch ein Loch unten in der Kammer, das mit Heißkleber oder Knete abgedichtet wird.
+- **Mikrofon:** Die Platine liegt mit der Logo-Seite (dort sind die Schalleinlässe) 1 mm unter der Oberseite und rastet in drei Haken ein. Über jedem Mikrofon (±33 mm diagonal) hat die Oberseite eine Gruppe aus sieben kleinen Löchern; ein paar Millimeter Versatz schaden nicht.
+- **Verkabelung:** Pi per USB zur Mikrofon-Platine (Soundkarte), Klinke von der Platine zum Verstärker, Verstärker per USB mit Strom, Lautsprecher an die Schraubklemmen. Kein Löten nötig, wenn die Lautsprecher mit Flachsteckern oder Klemmen angeschlossen werden.
 
 ## Maße vor dem Druck prüfen
 

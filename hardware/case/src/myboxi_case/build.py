@@ -82,16 +82,27 @@ def build(cfg: CaseConfig) -> CaseModel:
         piece("body", "Korpus", parts.body(g), body_c, TOOL_BODY, (180, 0, 0), (0, 0, 1)),
         piece("front", "Front", parts.front(g), front_c, TOOL_FRONT, (90, 0, 0), (0, -1, 0)),
         piece("base", "Boden", parts.base(g), body_c, TOOL_BODY, (0, 0, 0), (0, 0, -1)),
-        piece(
-            "speaker_ring",
-            "Lautsprecherring",
-            parts.speaker_ring(g),
-            front_c,
-            TOOL_FRONT,
-            (90, 0, 0),
-            (0, 0.6, 0),
-        ),
     ]
+    if layout.stereo:
+        # Printed open side down (the panel side), the cone on top.
+        for i, side in enumerate(("left", "right")):
+            label = ("Lautsprecherkammer links", "Lautsprecherkammer rechts")[i]
+            shape = parts.chamber(g, i)
+            pieces.append(
+                piece(f"chamber_{side}", label, shape, body_c, TOOL_BODY, (90, 0, 0), (0, 0.6, 0))
+            )
+    else:
+        pieces.append(
+            piece(
+                "speaker_ring",
+                "Lautsprecherring",
+                parts.speaker_ring(g),
+                front_c,
+                TOOL_FRONT,
+                (90, 0, 0),
+                (0, 0.6, 0),
+            )
+        )
     if layout.character is not None:
         for i, (x, y) in enumerate(parts.ear_positions(layout)):
             key = ("ear_left", "ear_right")[i]
@@ -140,11 +151,17 @@ def build(cfg: CaseConfig) -> CaseModel:
     comps: list[Component] = [
         *components.board(layout, cfg.board),
         components.pn532(layout),
-        components.speaker(layout, cfg.speaker),
         *components.buttons(layout, cfg.button),
-        components.amp(layout),
     ]
-    socket, plug = components.socket(layout)
+    if layout.stereo:
+        comps += [*components.frs5x(layout), *components.mic_board(layout)]
+        amp = components.line_amp(layout)
+        if amp is not None:
+            comps.append(amp)
+        socket, plug = components.round_socket(layout)
+    else:
+        comps += [components.speaker(layout, cfg.speaker), components.amp(layout)]
+        socket, plug = components.socket(layout)
     comps.append(socket)
     bank = components.powerbank(layout)
     if bank is not None:

@@ -1,7 +1,8 @@
 """Bought parts inside the case: dimensions and keep-out volumes (mm, assembly frame).
 
 Sources: Raspberry Pi mechanical drawings (Zero 2 W, Pi 4 B), Elechouse PN532 V3 module,
-Adafruit MAX98357A breakout. Values marked "measure" vary between vendors; the docs ask to
+Adafruit MAX98357A breakout, Visaton FRS 5 X data sheet (2013-07-24), Seeed reSpeaker XVF3800
+2D drawing. Values marked "measure" vary between vendors; the docs ask to
 measure the real part before printing (docs/gehaeuse.md).
 """
 
@@ -59,6 +60,22 @@ BUTTON_NUT = {16: 12.0, 24: 17.0}  # radius of nut and spanner room directly und
 SOCKET_BODY = (14.0, 9.0, 22.0)  # USB-C panel socket incl. cable exit: width, height, depth
 PLUG = (12.4, 6.6)  # USB-C plug overmould outside the case (USB-C spec max 12.35 x 6.5)
 POWERBANK = (93.0, 61.0, 23.0)  # 10 000 mAh class plus 1 mm (measure)
+
+# Visaton FRS 5 X: round frame Ø 52.5 (1.5 thick), two lugs 68 mm tip to tip with Ø 4.2 holes
+# 60 mm apart, basket Ø 50, magnet Ø 45, 33.5 deep including the frame; cutout Ø 46.
+FRS5X_FRAME_R = 26.25
+FRS5X_LUG = (68.0, 12.0)  # tip to tip, width at the holes
+FRS5X_T = 1.5
+FRS5X_DEPTH = 33.5
+# reSpeaker XVF3800 (USB): Ø 100 board, 1.2 thick; parts up to 6.2 below it (its component
+# side faces down), microphones on the diagonals ±33 mm, ports on one edge.
+MIC_R = 50.0
+MIC_PCB = 1.2
+MIC_BELOW = 6.2
+MIC_GAP = 1.0  # between the board and the top plate (spacer pads)
+MIC_HOLES = ((-33.0, -33.0), (33.0, -33.0), (-33.0, 33.0), (33.0, 33.0))
+LINE_AMP = (45.0, 26.0, 22.0)  # analog stereo amplifier module (PAM8403 class), measure
+ROUND_SOCKET = (15.5, 28.0)  # round USB-C panel socket inside: radius with nut, depth
 
 
 @dataclass(frozen=True)
@@ -141,6 +158,75 @@ def pn532(layout: Layout) -> Component:
         top - PCB + 0.01,
     )
     return Component("nfc", "NFC-Leser PN532", union([board, below]), ("body",), "#c0392b")
+
+
+def frs5x(layout: Layout) -> list[Component]:
+    """Both speakers of the stereo radio, lugs horizontal."""
+    back = WALL + 3.0
+    out: list[Component] = []
+    for i, (sx, sz) in enumerate(layout.speakers):
+        lw, lh = FRS5X_LUG
+        frame = cylinder_y(FRS5X_FRAME_R, sx, sz, back, back + FRS5X_T)
+        lugs = box(sx - lw / 2, back, sz - lh / 2, sx + lw / 2, back + FRS5X_T, sz + lh / 2)
+        basket = cylinder_y(25.0, sx, sz, back + FRS5X_T, back + FRS5X_DEPTH)
+        key = ("speaker_left", "speaker_right")[i]
+        out.append(
+            Component(
+                key,
+                "Lautsprecher Visaton FRS 5 X",
+                union([frame, lugs, basket]),
+                ("front", f"chamber_{key.removeprefix('speaker_')}"),
+                "#2b2b2b",
+            )
+        )
+    return out
+
+
+def mic_board(layout: Layout) -> list[Component]:
+    """reSpeaker XVF3800 under the top, ports towards the back, and the room for its angled
+    USB-C and audio plugs."""
+    if layout.mic is None:
+        return []
+    mx, my = layout.mic
+    top = layout.height - TOP
+    z1 = top - MIC_GAP
+    z0 = z1 - MIC_PCB
+    board_ = cylinder_z(MIC_R, mx, my, z0, z1)
+    below = cylinder_z(MIC_R - 3.0, mx, my, z0 - MIC_BELOW, z0 + 0.01)
+    usb = box(mx - 8.0, my + MIC_R - 6.0, z0 - 12.0, mx + 8.0, my + MIC_R + 15.0, z1)
+    jack = box(mx - 41.0, my + 34.0, z0 - 12.0, mx - 19.0, my + 56.0, z1)
+    return [
+        Component(
+            "mic", "Mikrofon reSpeaker XVF3800", union([board_, below]), ("body",), "#2f3a3a"
+        ),
+        Component("mic_plugs", "Stecker am Mikrofon", union([usb, jack]), (), "#555a58"),
+    ]
+
+
+def line_amp(layout: Layout) -> Component | None:
+    if layout.line_amp is None:
+        return None
+    x, y = layout.line_amp
+    w, d, h = LINE_AMP
+    return Component(
+        "line_amp", "Verstärker PAM8403", box(x, y, BASE, x + w, y + d, BASE + h), ("base",),
+        "#1f6f4f",
+    )  # fmt: skip
+
+
+def round_socket(layout: Layout) -> tuple[Component, Manifold]:
+    """Round USB-C panel socket: nut and cable inside, the plug path outside."""
+    sx, sz = layout.socket
+    r, depth = ROUND_SOCKET
+    inner = layout.depth - WALL
+    solid = cylinder_y(r, sx, sz, inner - depth, inner)
+    pw, ph = PLUG
+    plug = xz_slab(
+        rounded_rect(sx - pw / 2, sz - ph / 2, sx + pw / 2, sz + ph / 2, ph / 2),
+        layout.depth - WALL - 0.5,
+        layout.depth + 25.0,
+    )
+    return Component("socket", "USB-C-Einbaubuchse rund", solid, ("body",), "#555a58"), plug
 
 
 def speaker(layout: Layout, diameter: float) -> Component:
