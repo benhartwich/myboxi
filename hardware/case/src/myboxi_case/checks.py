@@ -180,7 +180,8 @@ def check_assembly(model: CaseModel) -> list[Issue]:
     comps = list(model.components)
     for i, a in enumerate(comps):
         for b in comps[i + 1 :]:
-            if a.key.split("_")[0] == b.key.split("_")[0] and a.key.startswith("board"):
+            same = a.key.split("_")[0] == b.key.split("_")[0]
+            if same and a.key.startswith(("board", "mic")):
                 continue
             gap = a.solid.min_gap(b.solid, 2.0)
             if gap < MIN_GAP:

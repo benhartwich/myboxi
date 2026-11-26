@@ -51,6 +51,11 @@ FORMS = (
     ("cat", "Katze", "Spitze Ohren, Schnurrhaare und eine plastische Schnauze."),
     ("bunny", "Hase", "Lange Ohren, Schnäuzchen mit kleinen Zähnen."),
     ("frog", "Frosch", "Glubschaugen oben und ein breites, plastisches Lächeln."),
+    (
+        "stereo",
+        "Stereo-Radio",
+        "Zwei Lautsprecher und Mikrofon-Platine, für Pi 4; Taster 24 mm, 17,5 cm breit.",
+    ),
 )
 GRILLES = (("dots", "Punkte"), ("stars", "Sterne"), ("hearts", "Herzen"), ("lines", "Streifen"))
 ANIMALS = "form=bear|cat|bunny|unicorn|frog"

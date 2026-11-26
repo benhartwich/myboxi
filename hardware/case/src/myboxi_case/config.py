@@ -6,7 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal, Self, cast
 
 from pydantic import (
     AfterValidator,
@@ -15,13 +15,14 @@ from pydantic import (
     ConfigDict,
     Field,
     field_validator,
+    model_validator,
 )
 
 from myboxi_case import GENERATOR_VERSION, text
 
 MAX_NAME = 14
 
-Form = Literal["radio", "cube", "bear", "cat", "bunny", "unicorn", "frog"]
+Form = Literal["radio", "cube", "bear", "cat", "bunny", "unicorn", "frog", "stereo"]
 Board = Literal["zero2w", "pi4"]
 Power = Literal["usbc", "powerbank"]
 Grille = Literal["dots", "stars", "hearts", "lines"]
@@ -54,6 +55,7 @@ ColorKey = Literal[
 # snout is the sculpted face of the animal boxes.
 SUGGESTED: dict[str, tuple[str, str, str, str]] = {
     "radio": ("sand", "moos", "creme", "creme"),
+    "stereo": ("sand", "moos", "creme", "creme"),
     "cube": ("sand", "rot", "weiss", "creme"),  # a wooden frame with red fields
     "bear": ("braun", "sand", "anthrazit", "creme"),
     "unicorn": ("weiss", "flieder", "sonne", "rosa"),
@@ -61,6 +63,8 @@ SUGGESTED: dict[str, tuple[str, str, str, str]] = {
     "bunny": ("flieder", "weiss", "anthrazit", "rosa"),
     "frog": ("moos", "salbei", "anthrazit", "sonne"),
 }
+STEREO_PARTS: dict[str, object] = {"board": "pi4", "power": "usbc", "speaker": 50, "button": 24}
+
 ROLES = ("body", "front", "accent", "muzzle")
 Role = Literal["body", "front", "accent", "muzzle"]
 
@@ -99,6 +103,16 @@ class CaseConfig(BaseModel):
     color_muzzle: ColorKey | None = None
     tolerance: Annotated[float, Field(ge=0.1, le=0.4)] = 0.2
     fastening: Fastening = "self_tap"
+
+    @model_validator(mode="before")
+    @classmethod
+    def _stereo_parts(cls, data: object) -> object:
+        """The stereo radio is built around fixed parts: Pi 4, two Visaton FRS 5 X (5 cm),
+        24 mm buttons, USB-C. Other choices for them would not change it, so they are set."""
+        if not isinstance(data, dict):
+            return data
+        fields = cast("dict[str, object]", data)
+        return {**fields, **STEREO_PARTS} if fields.get("form") == "stereo" else fields
 
     @field_validator("tolerance")
     @classmethod
